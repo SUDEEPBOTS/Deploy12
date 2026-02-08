@@ -28,7 +28,7 @@ try:
 except Exception as e:
     db_error = str(e)
 
-# --- HELPER: SETTINGS ---
+# --- HELPER: GET SETTINGS ---
 def get_settings():
     if settings_col is None:
         return {"repo": "", "api_data": ""}
@@ -38,8 +38,8 @@ def get_settings():
     except:
         return {"repo": "", "api_data": ""}
 
-# --- HELPER: GET ALL ACCOUNTS (List) ---
-def get_all_accounts():
+# --- HELPER: PARSE ACCOUNTS (String to List) ---
+def get_all_accounts_list(shuffle=False):
     config = get_settings()
     raw_data = config.get("api_data", "")
     
@@ -47,6 +47,7 @@ def get_all_accounts():
         return []
 
     account_list = []
+    # Line by line split karo
     lines = [line.strip() for line in raw_data.split('\n') if line.strip()]
     
     for line in lines:
@@ -56,8 +57,9 @@ def get_all_accounts():
             owner = parts[1].strip()
             account_list.append((key, owner))
     
-    # List ko Randomize kar do taaki har baar pehli key par load na pade
-    random.shuffle(account_list)
+    if shuffle:
+        random.shuffle(account_list)
+        
     return account_list
 
 # --- ROUTES ---
@@ -68,28 +70,64 @@ def home():
         return f"<h1>❌ Database Error</h1><p>{db_error}</p>"
     return "Deployer Service is Online 🟢. Go to <a href='/admin'>/admin</a>"
 
-@app.route('/admin', methods=['GET', 'POST'])
+# --- ADMIN: SHOW PAGE ---
+@app.route('/admin', methods=['GET'])
 def admin():
-    try:
-        if 'is_admin' not in session:
-            return render_template('login.html')
-        
-        if request.method == 'POST':
-            repo = request.form.get('repo')
-            api_data = request.form.get('api_data')
-            
-            if settings_col is not None:
-                settings_col.update_one(
-                    {"_id": "config"}, 
-                    {"$set": {"repo": repo, "api_data": api_data}}, 
-                    upsert=True
-                )
-            return redirect(url_for('admin'))
+    if 'is_admin' not in session:
+        return render_template('login.html')
+    
+    config = get_settings()
+    # List nikalo taaki table me dikha sakein
+    accounts = get_all_accounts_list(shuffle=False)
+    
+    return render_template('admin.html', config=config, accounts=accounts)
 
-        config = get_settings()
-        return render_template('admin.html', config=config)
-    except Exception as e:
-        return f"<h1>❌ Admin Error</h1><pre>{traceback.format_exc()}</pre>"
+# --- ADMIN: ADD ACCOUNT (Append Logic) ---
+@app.route('/admin/add', methods=['POST'])
+def admin_add():
+    if 'is_admin' not in session: return redirect(url_for('login'))
+
+    if settings_col is None: return "Database Error"
+
+    # Form se data lo
+    repo = request.form.get('repo')
+    new_key = request.form.get('new_api_key').strip()
+    new_owner = request.form.get('new_owner_id').strip()
+
+    # Purana data fetch karo
+    current_config = get_settings()
+    current_api_data = current_config.get("api_data", "")
+
+    # Naya data formatting (Comma laga ke)
+    new_entry = f"{new_key},{new_owner}"
+
+    # Agar pehle se data hai to nayi line me add karo, warna seedha
+    if current_api_data:
+        updated_api_data = current_api_data + "\n" + new_entry
+    else:
+        updated_api_data = new_entry
+
+    # Save to DB
+    settings_col.update_one(
+        {"_id": "config"}, 
+        {"$set": {"repo": repo, "api_data": updated_api_data}}, 
+        upsert=True
+    )
+    
+    return redirect(url_for('admin'))
+
+# --- ADMIN: CLEAR ALL (Reset) ---
+@app.route('/admin/clear', methods=['POST'])
+def admin_clear():
+    if 'is_admin' not in session: return redirect(url_for('login'))
+    
+    if settings_col is not None:
+        settings_col.update_one(
+            {"_id": "config"}, 
+            {"$set": {"api_data": ""}}, # Sirf API data saaf karo, repo rehne do
+            upsert=True
+        )
+    return redirect(url_for('admin'))
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -112,11 +150,11 @@ def prepare():
 @app.route('/api/deploy', methods=['POST'])
 def deploy_api():
     try:
-        # 1. Saare Accounts ki list uthao
-        accounts = get_all_accounts()
+        # 1. Randomize karke saare accounts uthao
+        accounts = get_all_accounts_list(shuffle=True)
 
         if not accounts:
-            return jsonify({"status": "error", "message": "No API Keys found in Admin Panel!"})
+            return jsonify({"status": "error", "message": "No Accounts found! Admin Panel me add karo."})
 
         json_data = request.json
         repo = json_data.get('repo')
@@ -124,9 +162,9 @@ def deploy_api():
         
         env_payload = [{"key": k, "value": v} for k, v in env_vars.items()]
         
-        last_error_message = "Unknown Error"
-        
-        # 2. LOOP START: Ek-ek karke try karo
+        last_error = "Unknown"
+
+        # 2. Loop through accounts
         for api_key, owner_id in accounts:
             
             payload = {
@@ -149,34 +187,29 @@ def deploy_api():
             }
 
             try:
-                print(f"🔄 Trying Key: {api_key[:5]}... Owner: {owner_id}")
+                print(f"🔄 Trying Key ending in...{api_key[-4:]}")
                 response = requests.post("https://api.render.com/v1/services", json=payload, headers=headers)
                 
-                # --- CASE 1: SUCCESS (201) ---
                 if response.status_code == 201:
                     service_data = response.json()
                     srv_id = service_data.get('service', {}).get('id')
                     dash_url = f"https://dashboard.render.com/web/{srv_id}"
                     return jsonify({"status": "success", "url": dash_url})
                 
-                # --- CASE 2: RATE LIMIT (429) ---
                 elif response.status_code == 429:
-                    print(f"⚠️ Rate Limit on Key {api_key[:5]}... Switching to Next Key.")
-                    last_error_message = "Rate Limit Exceeded on all keys."
-                    continue # Loop wapas chalega agli key ke sath
+                    print("⚠️ Rate Limit! Trying next account...")
+                    last_error = "Rate Limit Exceeded"
+                    continue # Next key try karo
                 
-                # --- CASE 3: OTHER ERROR (Repo error, invalid name, etc.) ---
                 else:
-                    # Agar error rate limit nahi hai (jaise Invalid Repo), toh agla try karne ka faida nahi
                     return jsonify({"status": "error", "message": f"Render Error: {response.text}"})
 
             except Exception as e:
-                print(f"❌ Connection Error: {str(e)}")
-                last_error_message = str(e)
-                continue # Network error hua toh bhi next key try karo
+                print(f"Connection Error: {e}")
+                last_error = str(e)
+                continue
 
-        # 3. Agar loop khatam ho gaya aur success nahi mili
-        return jsonify({"status": "error", "message": f"All API Keys Failed. Last Error: {last_error_message}"})
+        return jsonify({"status": "error", "message": f"All accounts failed. Last Error: {last_error}"})
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})

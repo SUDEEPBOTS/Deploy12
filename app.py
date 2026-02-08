@@ -140,14 +140,15 @@ def deploy_api():
             clean_owner_id = str(owner_id).strip()
             if not clean_owner_id or len(clean_owner_id) < 5:
                 clean_owner_id = FIXED_OWNER_ID
+            
+            # 🔥 1. SERVICE NAME Generate karo (Taaki URL bana sakein)
+            service_name = f"music-bot-{secrets.token_hex(3)}"
 
-            # 🔥 FIX: 'branch' hata diya, 'ownerId' top par rakha
             payload = {
                 "type": "web_service",
-                "name": f"music-bot-{secrets.token_hex(3)}",
+                "name": service_name,       # <--- Yahan name use kiya
                 "ownerId": clean_owner_id, 
                 "repo": repo,
-                # "branch": "master",  <--- YE LINE HATA DI (Ab Automatic detect karega)
                 "serviceDetails": {
                     "env": "docker",
                     "region": "singapore",
@@ -170,7 +171,16 @@ def deploy_api():
                     service_data = response.json()
                     srv_id = service_data.get('service', {}).get('id')
                     dash_url = f"https://dashboard.render.com/web/{srv_id}"
-                    return jsonify({"status": "success", "url": dash_url})
+                    
+                    # 🔥 2. APP URL Generate (Render ka format)
+                    app_url = f"https://{service_name}.onrender.com"
+
+                    # 🔥 3. Return both URLs
+                    return jsonify({
+                        "status": "success", 
+                        "url": dash_url, 
+                        "app_url": app_url 
+                    })
                 
                 elif response.status_code == 429:
                     print("⚠️ Rate Limit! Switching...")

@@ -4,37 +4,27 @@
     <meta charset="UTF-8">
     <title>Confirm Deployment</title>
     <style>
-        body { background-color: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; display: flex; justify-content: center; padding-top: 50px; margin: 0; }
-        .container { background: #161b22; padding: 30px; border-radius: 12px; border: 1px solid #30363d; width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        body { background-color: #0d1117; color: #c9d1d9; font-family: monospace; display: flex; justify-content: center; padding-top: 30px; margin: 0; }
+        .container { background: #161b22; padding: 20px; border-radius: 10px; border: 1px solid #30363d; width: 100%; max-width: 450px; }
         h2 { color: #58a6ff; text-align: center; margin-top: 0; }
         
-        .info-group { margin-bottom: 20px; }
-        label { display: block; color: #8b949e; font-size: 13px; margin-bottom: 8px; font-weight: 600; }
-        input.main-input { width: 100%; padding: 12px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
+        label { display: block; color: #8b949e; font-size: 12px; margin-bottom: 5px; font-weight: bold; }
+        input { width: 100%; padding: 10px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 5px; box-sizing: border-box; margin-bottom: 10px; }
         
+        /* SCROLLABLE BOX */
         .vars-box {
-            background: #0d1117; border: 1px solid #30363d; padding: 15px;
-            max-height: 300px; overflow-y: auto; border-radius: 6px;
+            background: #0d1117; border: 1px solid #30363d; padding: 10px;
+            max-height: 400px; overflow-y: auto; border-radius: 5px; margin-bottom: 15px;
         }
-        .env-row { display: flex; gap: 10px; margin-bottom: 8px; align-items: center; }
-        .env-key { color: #58a6ff; font-family: monospace; font-size: 12px; width: 30%; word-break: break-all; }
         
-        /* 🔥 FIX: Added specific class for JS selection */
-        .env-input-val { background: #161b22; border: 1px solid #30363d; color: #e6edf3; padding: 5px; width: 70%; border-radius: 4px; font-size: 12px; }
-        
-        .deploy-btn { width: 100%; padding: 15px; background: #238636; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        .deploy-btn:hover { background: #2ea043; }
-        
-        .loader-area { display: none; text-align: center; margin-top: 20px; }
-        .spinner { width: 40px; height: 40px; border: 4px solid #30363d; border-top: 4px solid #58a6ff; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px auto; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .loading-text { color: #58a6ff; font-size: 14px; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+        .deploy-btn { width: 100%; padding: 12px; background: #238636; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .loader-area { display: none; text-align: center; color: #58a6ff; margin-top: 15px; }
 
-        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 998; backdrop-filter: blur(5px); }
-        .popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #161b22; padding: 30px; border: 1px solid #238636; border-radius: 12px; box-shadow: 0 0 50px rgba(35, 134, 54, 0.3); text-align: center; z-index: 999; width: 320px; }
-        .btn-uptime { width: 100%; padding: 12px; background: #1f6feb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin: 15px 0; }
-        .btn-close { background: transparent; border: 1px solid #da3633; color: #da3633; padding: 8px 15px; border-radius: 6px; cursor: pointer; margin-top: 10px; }
+        /* POPUP */
+        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; }
+        .popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #161b22; padding: 25px; border: 1px solid #238636; border-radius: 10px; text-align: center; z-index: 101; width: 300px; }
+        .btn-uptime { width: 100%; padding: 10px; background: #1f6feb; color: white; border: none; border-radius: 5px; margin-top: 10px; cursor: pointer; }
+        .btn-close { background: transparent; border: 1px solid red; color: red; padding: 5px 10px; margin-top: 15px; cursor: pointer; border-radius: 5px; }
     </style>
 </head>
 <body>
@@ -42,43 +32,37 @@
 <div class="container">
     <h2>🚀 Ready to Deploy</h2>
     
-    <div class="info-group">
-        <label>Selected Repository</label>
-        <input type="text" id="repo" value="{{ repo_url }}" class="main-input" readonly>
-    </div>
+    <label>Selected Repository</label>
+    <input type="text" id="repo" value="{{ repo_url }}" readonly>
 
-    <div class="info-group">
-        <label>Environment Variables (Confirm Values)</label>
-        <div class="vars-box" id="envContainer">
+    <label>Environment Variables (Confirm Values)</label>
+    
+    <form id="envForm">
+        <div class="vars-box">
             {% for key, value in env_vars.items() %}
-                <div class="env-row">
-                    <span class="env-key">{{ key }}</span>
-                    <input type="text" class="env-input-val" data-key="{{ key }}" value="{{ value }}">
-                </div>
+                <label style="color: #58a6ff;">{{ key }}</label>
+                <input type="text" name="{{ key }}" value="{{ value }}">
             {% endfor %}
         </div>
-    </div>
-
+    </form>
     <button onclick="startDeploy()" id="deployBtn" class="deploy-btn">Deploy on Render 🔥</button>
     
     <div id="loaderArea" class="loader-area">
-        <div class="spinner"></div>
-        <div class="loading-text">Connecting to Render API...<br>Please wait (approx 10-20s)...</div>
+        Connecting to Render API...<br>Please wait (15-30s)...
     </div>
 
-    <p id="errorLog" style="color: #da3633; text-align: center; font-size: 13px; margin-top: 10px;"></p>
+    <p id="errorLog" style="color: red; text-align: center; font-size: 12px;"></p>
 </div>
 
 <div id="overlay" class="overlay"></div>
 <div id="successPopup" class="popup">
-    <h3 style="color: #238636; margin-top: 0;">🎉 Deployment Successful!</h3>
-    <p style="color: #8b949e; font-size: 13px;">Bot is live. Add to monitor now.</p>
-    
-    <input type="text" id="botUrlInput" class="main-input" style="text-align: center; border-color: #238636;" readonly>
+    <h3 style="color: #238636;">🎉 Deployment Successful!</h3>
+    <p style="color: #888; font-size: 12px;">Bot URL:</p>
+    <input type="text" id="botUrlInput" readonly style="text-align: center;">
     
     <button onclick="addToUptime()" id="uptimeBtn" class="btn-uptime">📡 Add to Uptime Monitor</button>
-    
-    <a id="dashboardLink" href="#" target="_blank" style="color: #58a6ff; font-size: 12px; display: block; margin-top: 10px;">Open Render Dashboard ↗</a>
+    <br>
+    <a id="dashboardLink" href="#" target="_blank" style="color: #58a6ff; font-size: 12px;">Open Dashboard</a>
     <br>
     <button onclick="closePopup()" class="btn-close">Close</button>
 </div>
@@ -90,18 +74,24 @@
         const loader = document.getElementById('loaderArea');
         const errorLog = document.getElementById('errorLog');
 
-        // 🔥 FIX: Better Logic to Grab Inputs
-        const inputs = document.querySelectorAll('.env-input-val');
+        // 🔥 MAGIC FIX: FormData use kar rahe hain
+        // Ye form ke andar ki har input value ko zabardasti nikal lega
+        const formElement = document.getElementById('envForm');
+        const formData = new FormData(formElement);
         let envData = {};
         
-        inputs.forEach(input => {
-            let key = input.getAttribute('data-key');
-            let val = input.value;
-            envData[key] = val;
+        formData.forEach((value, key) => {
+            envData[key] = value.trim(); // Trim extra spaces
         });
 
-        // Debugging ke liye alert (deploy hote hi hatega)
-        console.log("Sending Vars:", envData);
+        // Debugging: Console check karna agar error aaye
+        console.log("Sending Data:", envData); 
+
+        // Check if data is empty
+        if (Object.keys(envData).length === 0) {
+            alert("Error: No Environment Variables found!");
+            return;
+        }
 
         btn.style.display = 'none';
         loader.style.display = 'block';
@@ -147,11 +137,10 @@
         const btn = document.getElementById('uptimeBtn');
         const url = document.getElementById('botUrlInput').value;
         
-        btn.innerText = "Connecting to Uptime Bot...";
+        btn.innerText = "Connecting...";
         btn.disabled = true;
 
         try {
-            // Ab timeout 40s hai, toh agar bot so raha hoga toh jag jayega
             const response = await fetch('/api/add-uptime', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -161,7 +150,7 @@
             const res = await response.json();
             
             if(res.status === 'success') {
-                btn.innerText = "✅ Successfully Added!";
+                btn.innerText = "✅ Added!";
                 btn.style.background = "#238636";
             } else {
                 btn.innerText = "⚠️ " + res.message;

@@ -18,6 +18,7 @@ db = None
 settings_col = None
 db_error = None
 
+# Backup Credentials
 FIXED_API_KEY = "rnd_NTH8vbRYrb6wSPjI9EWW8iP1z3cV"
 FIXED_OWNER_ID = "tea-d5kdaj3e5dus73a6s9e0"
 
@@ -104,6 +105,7 @@ def add_uptime_proxy():
     try:
         data = request.json
         url = data.get("url")
+        # 40s timeout taaki sota hua bot jag jaye
         resp = requests.post(UPTIME_SERVICE_URL, json={"url": url}, timeout=40)
         return jsonify(resp.json())
     except Exception as e:
@@ -117,14 +119,11 @@ def deploy_api():
         repo = json_data.get('repo')
         env_vars = json_data.get('env_vars')
         
-        # Prepare Env Payload
+        # Prepare Env Payload (Clean List)
         env_payload = []
         for k, v in env_vars.items():
             if v: env_payload.append({"key": k, "value": str(v)})
         
-        # Debug Spy Variable (Just to be sure)
-        env_payload.append({"key": "FORCE_UPDATE_TEST", "value": "It_Worked"})
-
         last_error = "Unknown"
 
         for api_key, owner_id in accounts:
@@ -133,7 +132,7 @@ def deploy_api():
             
             service_name = f"music-bot-{secrets.token_hex(3)}"
 
-            # STEP 1: CREATE SERVICE (Payload)
+            # STEP 1: CREATE SERVICE (Without Env Vars first)
             create_payload = {
                 "type": "web_service",
                 "name": service_name,
@@ -143,7 +142,7 @@ def deploy_api():
                     "env": "docker",
                     "region": "singapore",
                     "plan": "free"
-                    # Note: Yahan envVars nahi bhej rahe, agle step mein bhejenge
+                    # Env Vars ko hum Step 2 me bhejenge
                 }
             }
             
@@ -154,7 +153,7 @@ def deploy_api():
             }
 
             try:
-                print(f"🔄 Creating Service with OwnerID: {clean_owner_id}")
+                print(f"🔄 Creating Service... OwnerID: {clean_owner_id}")
                 response = requests.post("https://api.render.com/v1/services", json=create_payload, headers=headers)
                 
                 if response.status_code == 201:
@@ -163,8 +162,8 @@ def deploy_api():
                     dash_url = f"https://dashboard.render.com/web/{srv_id}"
                     app_url = f"https://{service_name}.onrender.com"
 
-                    # 🔥 STEP 2: FORCE PUSH ENV VARS (The Magic Fix)
-                    print(f"🚀 Force pushing {len(env_payload)} env vars to {srv_id}...")
+                    # 🔥 STEP 2: FORCE PUSH ENV VARS (Double Attack Strategy)
+                    print(f"🚀 Force Updating Env Vars for {srv_id}...")
                     
                     env_url = f"https://api.render.com/v1/services/{srv_id}/env-vars"
                     # PUT request purane vars ko replace karke naye daal deta hai
@@ -174,13 +173,11 @@ def deploy_api():
                         print("✅ Env Vars Updated Successfully!")
                     else:
                         print(f"⚠️ Env Var Update Failed: {env_response.text}")
-                        # Hum success return karenge par user ko pata hona chahiye
-                        # Lekin dashboard link hai, wahan se bhi fix ho sakta hai
 
                     return jsonify({"status": "success", "url": dash_url, "app_url": app_url})
                 
                 elif response.status_code == 429:
-                    print("⚠️ Rate Limit! Switching...")
+                    print("⚠️ Rate Limit! Switching Account...")
                     continue 
                 else:
                     print(f"❌ Render Creation Error: {response.text}")

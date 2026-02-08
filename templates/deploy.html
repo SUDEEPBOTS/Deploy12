@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Confirm Deployment</title>
+    <style>
+        body { background-color: #000; color: #fff; font-family: sans-serif; display: flex; justify-content: center; padding-top: 50px; }
+        .container { background: #111; padding: 30px; border-radius: 12px; border: 1px solid #333; width: 450px; }
+        h2 { color: #0070f3; text-align: center; }
+        
+        .info-group { margin-bottom: 15px; }
+        label { display: block; color: #888; font-size: 12px; margin-bottom: 5px; }
+        input { width: 100%; padding: 10px; background: #222; border: 1px solid #444; color: white; border-radius: 5px; box-sizing: border-box;}
+        
+        .vars-box {
+            background: #000; border: 1px solid #333; padding: 10px;
+            max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px;
+            margin-bottom: 20px; border-radius: 5px;
+        }
+        
+        .deploy-btn {
+            width: 100%; padding: 15px; background: #238636; color: white;
+            border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer;
+        }
+        .deploy-btn:hover { background: #2ea043; }
+        .deploy-btn:disabled { background: #444; cursor: not-allowed; }
+
+        #logs { margin-top: 15px; text-align: center; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🚀 Ready to Deploy</h2>
+    
+    <div class="info-group">
+        <label>Selected Repository</label>
+        <input type="text" id="repo" value="{{ repo_url }}" readonly>
+    </div>
+
+    <div class="info-group">
+        <label>Environment Variables (.env)</label>
+        <div class="vars-box">
+            {% for key, value in env_vars.items() %}
+                <div style="margin-bottom: 4px;">
+                    <span style="color: #0070f3">{{ key }}</span> = <span style="color: #ccc">{{ value }}</span>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <button onclick="startDeploy()" id="btn" class="deploy-btn">Click to Deploy on Render 🔥</button>
+    <p id="logs"></p>
+</div>
+
+<script>
+    // Python dictionary to JS Object
+    const envData = {{ env_vars | tojson }};
+
+    async function startDeploy() {
+        const repoUrl = document.getElementById('repo').value;
+        const btn = document.getElementById('btn');
+        const logs = document.getElementById('logs');
+
+        btn.disabled = true;
+        btn.innerText = "Processing...";
+        logs.innerText = "Connecting to Render API...";
+        logs.style.color = "yellow";
+
+        try {
+            const res = await fetch('/api/deploy', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    repo: repoUrl,
+                    env_vars: envData
+                })
+            });
+
+            const data = await res.json();
+
+            if (data.status === 'success') {
+                logs.innerText = "Success! Redirecting to Dashboard...";
+                logs.style.color = "#0f0";
+                setTimeout(() => {
+                    window.location.href = data.url;
+                }, 2000);
+            } else {
+                logs.innerText = "Error: " + data.message;
+                logs.style.color = "red";
+                btn.disabled = false;
+                btn.innerText = "Try Again";
+            }
+        } catch (e) {
+            logs.innerText = "Server Error: " + e;
+            btn.disabled = false;
+        }
+    }
+</script>
+
+</body>
+  </html>
+  

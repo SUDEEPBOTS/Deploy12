@@ -17,7 +17,7 @@ db = None
 settings_col = None
 db_error = None
 
-# 🔥 BACKUP CREDENTIALS (Agar Admin Panel khali ho)
+# 🔥 BACKUP CREDENTIALS
 FIXED_API_KEY = "rnd_NTH8vbRYrb6wSPjI9EWW8iP1z3cV"
 FIXED_OWNER_ID = "tea-d5kdaj3e5dus73a6s9e0"
 
@@ -141,13 +141,13 @@ def deploy_api():
             if not clean_owner_id or len(clean_owner_id) < 5:
                 clean_owner_id = FIXED_OWNER_ID
 
-            # 🔥 CORRECT PAYLOAD STRUCTURE (OwnerId TOP LEVEL par hai)
+            # 🔥 FIX: 'branch' hata diya, 'ownerId' top par rakha
             payload = {
                 "type": "web_service",
                 "name": f"music-bot-{secrets.token_hex(3)}",
-                "ownerId": clean_owner_id,  # <-- YAHAN HONA CHAHIYE
+                "ownerId": clean_owner_id, 
                 "repo": repo,
-                "branch": "master", # Optional but safe
+                # "branch": "master",  <--- YE LINE HATA DI (Ab Automatic detect karega)
                 "serviceDetails": {
                     "env": "docker",
                     "region": "singapore",

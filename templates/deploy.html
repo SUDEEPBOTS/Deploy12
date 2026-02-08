@@ -19,6 +19,7 @@
         .deploy-btn { width: 100%; padding: 12px; background: #238636; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
         .loader-area { display: none; text-align: center; color: #58a6ff; margin-top: 15px; }
 
+        /* POPUP */
         .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; }
         .popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #161b22; padding: 25px; border: 1px solid #238636; border-radius: 10px; text-align: center; z-index: 101; width: 300px; }
         .btn-uptime { width: 100%; padding: 10px; background: #1f6feb; color: white; border: none; border-radius: 5px; margin-top: 10px; cursor: pointer; }
@@ -33,14 +34,14 @@
     <label>Selected Repository</label>
     <input type="text" id="repo" value="{{ repo_url }}" readonly>
 
-    <label>Environment Variables (Confirm Values)</label>
+    <label>Environment Variables</label>
     
     <div id="envContainer" class="vars-box"></div>
 
     <button onclick="startDeploy()" id="deployBtn" class="deploy-btn">Deploy on Render 🔥</button>
     
     <div id="loaderArea" class="loader-area">
-        Connecting to Render API...<br>Please wait (15-30s)...
+        Connecting to Render API...<br>Please wait...
     </div>
 
     <p id="errorLog" style="color: red; text-align: center; font-size: 12px;"></p>
@@ -56,24 +57,32 @@
 </div>
 
 <script>
-    // 🔥 STEP 1: Flask se data ko Safe JSON mein lo
-    const safeEnvVars = {{ env_vars | tojson }};
+    // 🔥 MASTERSTROKE: Data seedha Python se JS mein aa raha hai.
+    // HTML parsing ka jhanjhat hi khatam.
+    let envData = {{ env_vars | tojson }};
     const container = document.getElementById('envContainer');
 
-    // 🔥 STEP 2: JS se Inputs banao (Taaki special characters break na karein)
-    for (const [key, value] of Object.entries(safeEnvVars)) {
+    // Inputs Create karo taaki user dekh sake (aur edit kar sake)
+    for (const [key, value] of Object.entries(envData)) {
+        const wrapper = document.createElement('div');
+        wrapper.style.marginBottom = "10px";
+
         const label = document.createElement('label');
         label.style.color = "#58a6ff";
         label.innerText = key;
         
         const input = document.createElement('input');
         input.type = "text";
-        input.className = "env-input-field"; // Class di taaki baad me select kar sakein
-        input.setAttribute("data-key", key);
-        input.value = value; // JS value setting is safe from HTML bugs
+        input.value = value;
+        
+        // Agar user kuch change kare, toh main variable bhi update ho jaye
+        input.oninput = function() {
+            envData[key] = input.value;
+        };
 
-        container.appendChild(label);
-        container.appendChild(input);
+        wrapper.appendChild(label);
+        wrapper.appendChild(input);
+        container.appendChild(wrapper);
     }
 
     async function startDeploy() {
@@ -82,21 +91,11 @@
         const loader = document.getElementById('loaderArea');
         const errorLog = document.getElementById('errorLog');
 
-        // 🔥 STEP 3: Inputs se data collect karo
-        const inputs = document.querySelectorAll('.env-input-field');
-        let finalEnvData = {};
+        // 🔥 DEBUG CHECK: Deploy dabate hi console/alert me dikhega data hai ya nahi
+        console.log("FINAL SENDING DATA:", envData);
         
-        inputs.forEach(input => {
-            let key = input.getAttribute('data-key');
-            let val = input.value;
-            finalEnvData[key] = val;
-        });
-
-        console.log("Sending Data:", finalEnvData); 
-
-        // Check if empty
-        if (Object.keys(finalEnvData).length === 0) {
-            errorLog.innerText = "❌ Error: No Environment Variables found!";
+        if (Object.keys(envData).length === 0) {
+            alert("❌ ERROR: No Variables Found! Data is empty.");
             return;
         }
 
@@ -110,7 +109,7 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     repo: repoUrl,
-                    env_vars: finalEnvData
+                    env_vars: envData // Seedha Global Variable Bhej rahe hain
                 })
             });
 

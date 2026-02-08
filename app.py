@@ -1,4 +1,3 @@
-
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from pymongo import MongoClient
 import requests
@@ -30,17 +29,17 @@ except Exception as e:
 
 # --- HELPER FUNCTION ---
 def get_settings():
-    # 🔥 FIX: 'if not settings_col:' ko badal kar 'is None' kiya hai
+    # 🔥 FIX: 'is None' check lagaya hai taaki crash na ho
     if settings_col is None:
-        return {"repo": "", "api_key": "", "owner_id": ""}
+        return {"repo": "", "api_key": ""}
     
     try:
         data = settings_col.find_one({"_id": "config"})
         if not data:
-            return {"repo": "", "api_key": "", "owner_id": ""}
+            return {"repo": "", "api_key": ""}
         return data
     except:
-        return {"repo": "", "api_key": "", "owner_id": ""}
+        return {"repo": "", "api_key": ""}
 
 # --- ROUTES ---
 
@@ -59,13 +58,12 @@ def admin():
         if request.method == 'POST':
             repo = request.form.get('repo')
             api_key = request.form.get('api_key')
-            owner_id = request.form.get('owner_id')
+            # Note: Owner ID ab hum form se nahi le rahe, wo code me fixed hai
             
-            # 🔥 FIX: Yahan bhi check lagaya
             if settings_col is not None:
                 settings_col.update_one(
                     {"_id": "config"}, 
-                    {"$set": {"repo": repo, "api_key": api_key, "owner_id": owner_id}}, 
+                    {"$set": {"repo": repo, "api_key": api_key}}, 
                     upsert=True
                 )
             return redirect(url_for('admin'))
@@ -83,19 +81,16 @@ def login():
         return redirect(url_for('admin'))
     return "Incorrect Password"
 
-# --- API DEPLOY ROUTE (Site A se request yahan aayegi) ---
+# --- API DEPLOY ROUTE ---
 @app.route('/prepare', methods=['POST'])
 def prepare():
-    # Site A se jo data aaya
     data = request.form.to_dict()
     
     config = get_settings()
-    # Agar user ne repo nahi bheja, toh default admin wala use karo
     repo_url = data.get('repo_url')
     if not repo_url:
         repo_url = config.get('repo', 'https://github.com/TeamYukki/YukkiMusicBot')
     
-    # Clean data (repo url ko env vars se hatao)
     if 'repo_url' in data:
         del data['repo_url']
 
@@ -106,7 +101,9 @@ def deploy_api():
     try:
         config = get_settings()
         api_key = config.get('api_key')
-        owner_id = config.get('owner_id')
+
+        # 🔥 HARDCODED OWNER ID (Ye rahi tumhari ID)
+        owner_id = "tea-d14i8bc9c44c738650qg"
 
         if not api_key:
             return jsonify({"status": "error", "message": "Admin ne Render API Key set nahi ki hai!"})
@@ -129,13 +126,11 @@ def deploy_api():
                 "env": "docker",
                 "region": "singapore",
                 "plan": "free",
+                "ownerId": owner_id,  # <--- YAHAN FIX KAR DIYA
                 "envVars": env_payload
             }
         }
         
-        if owner_id:
-            payload["serviceDetails"]["ownerId"] = owner_id
-
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",

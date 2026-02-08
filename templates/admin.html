@@ -2,28 +2,78 @@
 <html>
 <head>
     <title>Admin Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
-        body { background: #0d1117; color: white; font-family: monospace; display: flex; justify-content: center; padding-top: 50px;}
-        form { background: #161b22; padding: 40px; border: 1px solid #30363d; width: 500px; border-radius: 10px; }
-        input, textarea { width: 100%; padding: 10px; margin: 10px 0; background: #0d1117; border: 1px solid #30363d; color: white; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; background: #238636; color: white; border: none; cursor: pointer; margin-top: 10px; font-weight: bold;}
-        h2 { text-align: center; margin-top: 0; }
-        .note { font-size: 12px; color: #888; margin-bottom: 10px; }
+        body { background: #0d1117; color: white; font-family: 'Inter', sans-serif; display: flex; justify-content: center; padding-top: 50px;}
+        .container { background: #161b22; padding: 40px; border: 1px solid #30363d; width: 600px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        
+        h2 { text-align: center; margin-top: 0; color: #58a6ff; }
+        
+        label { display: block; margin-top: 15px; font-weight: 600; font-size: 14px; color: #8b949e; }
+        input { width: 100%; padding: 12px; margin-top: 5px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; }
+        input:focus { border-color: #58a6ff; outline: none; }
+
+        .btn-add { width: 100%; padding: 12px; background: #238636; color: white; border: none; cursor: pointer; margin-top: 20px; font-weight: bold; border-radius: 6px; font-size: 16px; }
+        .btn-add:hover { background: #2ea043; }
+
+        .btn-clear { background: transparent; border: 1px solid #da3633; color: #da3633; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; float: right; margin-top: -30px;}
+        .btn-clear:hover { background: rgba(218, 54, 51, 0.1); }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #30363d; font-size: 13px; }
+        th { color: #8b949e; }
+        .key-mask { filter: blur(3px); transition: 0.3s; cursor: pointer; }
+        .key-mask:hover { filter: none; }
     </style>
 </head>
 <body>
-    <form method="POST">
-        <h2>⚙️ Admin Settings (Multi-Key)</h2>
-        
-        <label>Default Repo URL</label>
-        <input type="text" name="repo" value="{{ config.repo }}" placeholder="https://github.com/...">
-        
-        <label>API Keys & Owner IDs (One per line)</label>
-        <p class="note">Format: <b>API_KEY, OWNER_ID</b> (Comma se alag karein)</p>
-        
-        <textarea name="api_data" rows="10" placeholder="rnd_xxxxxxx, tea-yyyyyyy&#10;rnd_aaaaaaa, usr-bbbbbbb">{{ config.api_data }}</textarea>
-        
-        <button type="submit">Save Settings 💾</button>
-    </form>
+    <div class="container">
+        <h2>⚙️ Multi-Key Manager</h2>
+        <form method="POST" action="/admin/clear" onsubmit="return confirm('Are you sure? Sab udd jayega!');">
+            <button class="btn-clear">🗑️ Clear All Keys</button>
+        </form>
+
+        <form method="POST" action="/admin/add">
+            <label>Repo URL (Default)</label>
+            <input type="text" name="repo" value="{{ config.repo }}" placeholder="https://github.com/..." required>
+
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <div style="flex: 1;">
+                    <label>Render API Key</label>
+                    <input type="text" name="new_api_key" placeholder="rnd_xxxxxxxx..." required autocomplete="off">
+                </div>
+                <div style="flex: 1;">
+                    <label>Owner ID</label>
+                    <input type="text" name="new_owner_id" placeholder="usr-xxxx or tea-xxxx" required autocomplete="off">
+                </div>
+            </div>
+
+            <button type="submit" class="btn-add">➕ Add Account</button>
+        </form>
+
+        {% if accounts %}
+        <label>✅ Saved Accounts ({{ accounts|length }})</label>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>API Key (Hover to see)</th>
+                    <th>Owner ID</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for key, owner in accounts %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td><span class="key-mask">{{ key[:8] }}...{{ key[-4:] }}</span></td>
+                    <td>{{ owner }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="text-align: center; color: #8b949e; margin-top: 20px;">No accounts saved yet.</p>
+        {% endif %}
+    </div>
 </body>
 </html>

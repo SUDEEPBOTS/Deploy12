@@ -9,21 +9,22 @@ import random
 app = Flask(__name__)
 app.secret_key = "debug_secret_key_123"
 
-# --- MONGODB SETUP ---
+# --- CONFIG ---
 MONGO_URL = os.getenv("MONGO_URL")
+# 🔥 TERA UPTIME BOT URL YAHAN DALNA HAI
+UPTIME_SERVICE_URL = "https://uptimebot-rvni.onrender.com/add"
 
 client = None
 db = None
 settings_col = None
 db_error = None
 
-# 🔥 BACKUP CREDENTIALS
 FIXED_API_KEY = "rnd_NTH8vbRYrb6wSPjI9EWW8iP1z3cV"
 FIXED_OWNER_ID = "tea-d5kdaj3e5dus73a6s9e0"
 
 try:
     if not MONGO_URL:
-        db_error = "MONGO_URL Environment Variable nahi mila!"
+        db_error = "MONGO_URL Missing!"
     else:
         client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=5000)
         db = client["DeployerBot"]
@@ -32,21 +33,18 @@ try:
 except Exception as e:
     db_error = str(e)
 
-# --- HELPER: GET SETTINGS ---
+# --- HELPERS ---
 def get_settings():
-    if settings_col is None:
-        return {"repo": "", "api_data": ""}
+    if settings_col is None: return {"repo": "", "api_data": ""}
     try:
         data = settings_col.find_one({"_id": "config"})
         return data if data else {"repo": "", "api_data": ""}
     except:
         return {"repo": "", "api_data": ""}
 
-# --- HELPER: PARSE ACCOUNTS ---
 def get_all_accounts_list(shuffle=False):
     config = get_settings()
     raw_data = config.get("api_data", "")
-    
     account_list = []
     if raw_data:
         lines = [line.strip() for line in raw_data.split('\n') if line.strip()]
@@ -54,19 +52,10 @@ def get_all_accounts_list(shuffle=False):
             parts = line.split(',')
             if len(parts) >= 1:
                 key = parts[0].strip()
-                if len(parts) >= 2 and parts[1].strip():
-                    owner = parts[1].strip()
-                else:
-                    owner = FIXED_OWNER_ID
-                if key:
-                    account_list.append((key, owner))
-
-    if not account_list:
-        account_list.append((FIXED_API_KEY, FIXED_OWNER_ID))
-    
-    if shuffle:
-        random.shuffle(account_list)
-        
+                owner = parts[1].strip() if len(parts) >= 2 and parts[1].strip() else FIXED_OWNER_ID
+                if key: account_list.append((key, owner))
+    if not account_list: account_list.append((FIXED_API_KEY, FIXED_OWNER_ID))
+    if shuffle: random.shuffle(account_list)
     return account_list
 
 # --- ROUTES ---
@@ -76,36 +65,25 @@ def home():
     if db_error: return f"<h1>❌ Database Error</h1><p>{db_error}</p>"
     return "Deployer Service is Online 🟢. Go to <a href='/admin'>/admin</a>"
 
-@app.route('/admin', methods=['GET'])
+@app.route('/admin', methods=['GET', 'POST'])
 def admin():
     if 'is_admin' not in session: return render_template('login.html')
-    config = get_settings()
-    accounts = get_all_accounts_list(shuffle=False)
-    return render_template('admin.html', config=config, accounts=accounts)
-
-@app.route('/admin/add', methods=['POST'])
-def admin_add():
-    if 'is_admin' not in session: return redirect(url_for('login'))
-    if settings_col is None: return "Database Error"
-
-    repo = request.form.get('repo')
-    new_key = request.form.get('new_api_key').strip()
-    new_owner = request.form.get('new_owner_id').strip()
-    if not new_owner: new_owner = FIXED_OWNER_ID
-
-    current_config = get_settings()
-    current_api_data = current_config.get("api_data", "")
-    new_entry = f"{new_key},{new_owner}"
-
-    updated_api_data = (current_api_data + "\n" + new_entry) if current_api_data else new_entry
-
-    settings_col.update_one({"_id": "config"}, {"$set": {"repo": repo, "api_data": updated_api_data}}, upsert=True)
-    return redirect(url_for('admin'))
+    if request.method == 'POST':
+        repo = request.form.get('repo')
+        new_key = request.form.get('new_api_key').strip()
+        new_owner = request.form.get('new_owner_id').strip() or FIXED_OWNER_ID
+        current = get_settings().get("api_data", "")
+        new_entry = f"{new_key},{new_owner}"
+        updated = (current + "\n" + new_entry) if current else new_entry
+        settings_col.update_one({"_id": "config"}, {"$set": {"repo": repo, "api_data": updated}}, upsert=True)
+        return redirect(url_for('admin'))
+    
+    return render_template('admin.html', config=get_settings(), accounts=get_all_accounts_list())
 
 @app.route('/admin/clear', methods=['POST'])
 def admin_clear():
     if 'is_admin' not in session: return redirect(url_for('login'))
-    if settings_col: settings_col.update_one({"_id": "config"}, {"$set": {"api_data": ""}}, upsert=True)
+    settings_col.update_one({"_id": "config"}, {"$set": {"api_data": ""}}, upsert=True)
     return redirect(url_for('admin'))
 
 @app.route('/login', methods=['POST'])
@@ -119,41 +97,51 @@ def login():
 def prepare():
     data = request.form.to_dict()
     config = get_settings()
-    repo_url = data.get('repo_url')
-    if not repo_url: repo_url = config.get('repo', 'https://github.com/TeamYukki/YukkiMusicBot')
+    repo_url = data.get('repo_url') or config.get('repo', 'https://github.com/TeamYukki/YukkiMusicBot')
     if 'repo_url' in data: del data['repo_url']
     return render_template('deploy.html', env_vars=data, repo_url=repo_url)
+
+# 🔥 NEW ROUTE: PROXY TO UPTIME BOT (Solves CORS)
+@app.route('/api/add-uptime', methods=['POST'])
+def add_uptime_proxy():
+    try:
+        data = request.json
+        url = data.get("url")
+        # Site C ko request bhejo
+        resp = requests.post(UPTIME_SERVICE_URL, json={"url": url}, timeout=5)
+        return jsonify(resp.json())
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
 
 @app.route('/api/deploy', methods=['POST'])
 def deploy_api():
     try:
         accounts = get_all_accounts_list(shuffle=True)
-        
         json_data = request.json
         repo = json_data.get('repo')
         env_vars = json_data.get('env_vars')
-        env_payload = [{"key": k, "value": v} for k, v in env_vars.items()]
+        
+        # 🔥 FIX 1: Convert all values to STRING
+        env_payload = [{"key": k, "value": str(v)} for k, v in env_vars.items()]
         
         last_error = "Unknown"
 
         for api_key, owner_id in accounts:
             clean_owner_id = str(owner_id).strip()
-            if not clean_owner_id or len(clean_owner_id) < 5:
-                clean_owner_id = FIXED_OWNER_ID
+            if not clean_owner_id or len(clean_owner_id) < 5: clean_owner_id = FIXED_OWNER_ID
             
-            # 🔥 1. SERVICE NAME Generate karo (Taaki URL bana sakein)
             service_name = f"music-bot-{secrets.token_hex(3)}"
 
             payload = {
                 "type": "web_service",
-                "name": service_name,       # <--- Yahan name use kiya
+                "name": service_name,
                 "ownerId": clean_owner_id, 
                 "repo": repo,
                 "serviceDetails": {
                     "env": "docker",
                     "region": "singapore",
                     "plan": "free",
-                    "envVars": env_payload
+                    "envVars": env_payload # Ab ye safe string list hai
                 }
             }
             
@@ -171,27 +159,17 @@ def deploy_api():
                     service_data = response.json()
                     srv_id = service_data.get('service', {}).get('id')
                     dash_url = f"https://dashboard.render.com/web/{srv_id}"
-                    
-                    # 🔥 2. APP URL Generate (Render ka format)
                     app_url = f"https://{service_name}.onrender.com"
 
-                    # 🔥 3. Return both URLs
-                    return jsonify({
-                        "status": "success", 
-                        "url": dash_url, 
-                        "app_url": app_url 
-                    })
+                    return jsonify({"status": "success", "url": dash_url, "app_url": app_url})
                 
                 elif response.status_code == 429:
                     print("⚠️ Rate Limit! Switching...")
-                    last_error = "Rate Limit Hit"
                     continue 
-                
                 else:
                     print(f"❌ Error: {response.text}")
                     last_error = response.text
                     continue 
-
             except Exception as e:
                 print(f"Network Error: {e}")
                 last_error = str(e)

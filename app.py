@@ -11,7 +11,6 @@ app.secret_key = "debug_secret_key_123"
 
 # --- CONFIG ---
 MONGO_URL = os.getenv("MONGO_URL")
-# 🔥 TERA UPTIME BOT URL
 UPTIME_SERVICE_URL = "https://uptimebot-rvni.onrender.com/add"
 
 client = None
@@ -106,7 +105,6 @@ def add_uptime_proxy():
     try:
         data = request.json
         url = data.get("url")
-        # Timeout 40 seconds hai
         resp = requests.post(UPTIME_SERVICE_URL, json={"url": url}, timeout=40)
         return jsonify(resp.json())
     except Exception as e:
@@ -120,10 +118,11 @@ def deploy_api():
         repo = json_data.get('repo')
         env_vars = json_data.get('env_vars')
         
-        # 🔥 DEBUG LOG: Ye server logs me dikhega ki data aaya ya nahi
-        print(f"DEBUG: Received Env Vars: {env_vars}")
+        # 🔥 CHECK: Agar env vars khali hain to yahi rok do
+        if not env_vars or len(env_vars) == 0:
+            return jsonify({"status": "error", "message": "Backend received 0 Env Vars! Frontend Issue."})
 
-        # String Conversion (Zaroori hai API_ID jaise numbers ke liye)
+        # String Conversion
         env_payload = [{"key": k, "value": str(v)} for k, v in env_vars.items()]
         
         last_error = "Unknown"
@@ -154,7 +153,6 @@ def deploy_api():
             }
 
             try:
-                print(f"🔄 Trying OwnerID: {clean_owner_id}")
                 response = requests.post("https://api.render.com/v1/services", json=payload, headers=headers)
                 
                 if response.status_code == 201:
@@ -162,18 +160,15 @@ def deploy_api():
                     srv_id = service_data.get('service', {}).get('id')
                     dash_url = f"https://dashboard.render.com/web/{srv_id}"
                     app_url = f"https://{service_name}.onrender.com"
-
                     return jsonify({"status": "success", "url": dash_url, "app_url": app_url})
                 
                 elif response.status_code == 429:
                     print("⚠️ Rate Limit! Switching...")
                     continue 
                 else:
-                    print(f"❌ Render Error: {response.text}")
                     last_error = response.text
                     continue 
             except Exception as e:
-                print(f"Network Error: {e}")
                 last_error = str(e)
                 continue
 

@@ -4,63 +4,39 @@
     <meta charset="UTF-8">
     <title>Confirm Deployment</title>
     <style>
-        /* --- CORE STYLES --- */
         body { background-color: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; display: flex; justify-content: center; padding-top: 50px; margin: 0; }
         .container { background: #161b22; padding: 30px; border-radius: 12px; border: 1px solid #30363d; width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         h2 { color: #58a6ff; text-align: center; margin-top: 0; }
         
         .info-group { margin-bottom: 20px; }
         label { display: block; color: #8b949e; font-size: 13px; margin-bottom: 8px; font-weight: 600; }
-        input { width: 100%; padding: 12px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
-        input:focus { border-color: #58a6ff; }
+        input.main-input { width: 100%; padding: 12px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
         
+        /* ENV VARS BOX */
         .vars-box {
             background: #0d1117; border: 1px solid #30363d; padding: 15px;
-            max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px;
-            margin-bottom: 20px; border-radius: 6px; color: #e6edf3;
+            max-height: 300px; overflow-y: auto; border-radius: 6px;
         }
+        .env-row { display: flex; gap: 10px; margin-bottom: 8px; align-items: center; }
+        .env-key { color: #58a6ff; font-family: monospace; font-size: 12px; width: 30%; word-break: break-all; }
+        .env-val { background: #161b22; border: 1px solid #30363d; color: #e6edf3; padding: 5px; width: 70%; border-radius: 4px; font-size: 12px; }
         
-        /* --- BUTTONS --- */
-        .deploy-btn {
-            width: 100%; padding: 15px; background: #238636; color: white;
-            border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s;
-        }
+        /* BUTTONS */
+        .deploy-btn { width: 100%; padding: 15px; background: #238636; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .deploy-btn:hover { background: #2ea043; }
-        .deploy-btn:disabled { background: #30363d; color: #8b949e; cursor: not-allowed; }
-
-        /* --- LOADING ANIMATION --- */
-        .loader-container { display: none; text-align: center; margin-top: 20px; }
-        .loader {
-            border: 4px solid #30363d;
-            border-top: 4px solid #58a6ff;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 10px auto;
-        }
+        
+        /* LOADER */
+        .loader-area { display: none; text-align: center; margin-top: 20px; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #30363d; border-top: 4px solid #58a6ff; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .loading-text { color: #58a6ff; font-size: 14px; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
 
-        /* --- POPUP STYLES --- */
+        /* POPUP */
         .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 998; backdrop-filter: blur(5px); }
-        .popup {
-            display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: #161b22; padding: 30px; border: 1px solid #238636; border-radius: 12px;
-            box-shadow: 0 0 50px rgba(35, 134, 54, 0.3); text-align: center; z-index: 999; width: 320px;
-        }
-        .popup h3 { color: #238636; margin-top: 0; font-size: 22px; }
-        .popup input { text-align: center; font-family: monospace; color: #58a6ff; border-color: #238636; }
-        
+        .popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #161b22; padding: 30px; border: 1px solid #238636; border-radius: 12px; box-shadow: 0 0 50px rgba(35, 134, 54, 0.3); text-align: center; z-index: 999; width: 320px; }
         .btn-uptime { width: 100%; padding: 12px; background: #1f6feb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin: 15px 0; }
-        .btn-uptime:hover { background: #388bfd; }
-        
-        .btn-close { background: transparent; border: 1px solid #da3633; color: #da3633; padding: 8px 15px; border-radius: 6px; cursor: pointer; margin-top: 10px; font-size: 13px; }
-        .btn-close:hover { background: rgba(218, 54, 51, 0.1); }
-        
-        a.dash-link { color: #8b949e; font-size: 12px; text-decoration: none; }
-        a.dash-link:hover { color: #58a6ff; text-decoration: underline; }
+        .btn-close { background: transparent; border: 1px solid #da3633; color: #da3633; padding: 8px 15px; border-radius: 6px; cursor: pointer; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -70,15 +46,16 @@
     
     <div class="info-group">
         <label>Selected Repository</label>
-        <input type="text" id="repo" value="{{ repo_url }}" readonly>
+        <input type="text" id="repo" value="{{ repo_url }}" class="main-input" readonly>
     </div>
 
     <div class="info-group">
-        <label>Environment Variables</label>
-        <div class="vars-box">
+        <label>Environment Variables (Check values!)</label>
+        <div class="vars-box" id="envContainer">
             {% for key, value in env_vars.items() %}
-                <div style="margin-bottom: 4px;">
-                    <span style="color: #58a6ff">{{ key }}</span> = <span style="color: #8b949e">{{ value }}</span>
+                <div class="env-row">
+                    <span class="env-key">{{ key }}</span>
+                    <input type="text" class="env-val" name="{{ key }}" value="{{ value }}">
                 </div>
             {% endfor %}
         </div>
@@ -86,9 +63,9 @@
 
     <button onclick="startDeploy()" id="deployBtn" class="deploy-btn">Deploy on Render 🔥</button>
     
-    <div id="loaderArea" class="loader-container">
-        <div class="loader"></div>
-        <div class="loading-text">Connecting to Render API... Please wait...</div>
+    <div id="loaderArea" class="loader-area">
+        <div class="spinner"></div>
+        <div class="loading-text">Connecting to Render API...<br>Please wait (approx 10-20s)...</div>
     </div>
 
     <p id="errorLog" style="color: #da3633; text-align: center; font-size: 13px; margin-top: 10px;"></p>
@@ -96,34 +73,34 @@
 
 <div id="overlay" class="overlay"></div>
 <div id="successPopup" class="popup">
-    <h3>🎉 Deployment Successful!</h3>
-    <p style="color: #8b949e; font-size: 13px;">Your bot is live. Add it to monitor to keep it awake.</p>
+    <h3 style="color: #238636; margin-top: 0;">🎉 Deployment Successful!</h3>
+    <p style="color: #8b949e; font-size: 13px;">Bot is live. Add to monitor now.</p>
     
-    <label style="text-align: left;">Bot Live URL:</label>
-    <input type="text" id="botUrlInput" readonly>
+    <input type="text" id="botUrlInput" class="main-input" style="text-align: center; border-color: #238636;" readonly>
     
     <button onclick="addToUptime()" id="uptimeBtn" class="btn-uptime">📡 Add to Uptime Monitor</button>
     
-    <a id="dashboardLink" href="#" target="_blank" class="dash-link">Open Render Dashboard ↗</a>
-    <br><br>
+    <a id="dashboardLink" href="#" target="_blank" style="color: #58a6ff; font-size: 12px; display: block; margin-top: 10px;">Open Render Dashboard ↗</a>
+    <br>
     <button onclick="closePopup()" class="btn-close">Close</button>
 </div>
 
 <script>
-    const envData = {{ env_vars | tojson }};
-    
-    // 🔥 TERA UPTIME BOT URL (Endpoint /add jaruri hai)
-    const UPTIME_SERVICE_URL = "https://uptimebot-rvni.onrender.com/add"; 
-
     async function startDeploy() {
         const repoUrl = document.getElementById('repo').value;
         const btn = document.getElementById('deployBtn');
         const loader = document.getElementById('loaderArea');
         const errorLog = document.getElementById('errorLog');
 
-        // UI Reset
-        btn.style.display = 'none'; // Button chhupa do
-        loader.style.display = 'block'; // Loader dikhao
+        // Collect Env Vars from Inputs (Jo dikh raha hai wahi jayega)
+        const envInputs = document.querySelectorAll('#envContainer input');
+        let envData = {};
+        envInputs.forEach(input => {
+            envData[input.name] = input.value;
+        });
+
+        btn.style.display = 'none';
+        loader.style.display = 'block';
         errorLog.innerText = "";
 
         try {
@@ -139,35 +116,27 @@
             const data = await res.json();
 
             if (data.status === 'success') {
-                loader.style.display = 'none'; // Loader hatao
-                
-                // Popup dikhao
+                loader.style.display = 'none';
                 showPopup(data.app_url, data.url);
             } else {
                 throw new Error(data.message);
             }
         } catch (e) {
             loader.style.display = 'none';
-            btn.style.display = 'block'; // Button wapas lao
+            btn.style.display = 'block';
             errorLog.innerText = "❌ Error: " + e.message;
         }
     }
 
-    // --- POPUP FUNCTIONS ---
-
+    // --- POPUP LOGIC ---
     function showPopup(appUrl, dashUrl) {
         document.getElementById('overlay').style.display = 'block';
         document.getElementById('successPopup').style.display = 'block';
-        
-        // Data bharo
         document.getElementById('botUrlInput').value = appUrl;
         document.getElementById('dashboardLink').href = dashUrl;
     }
 
     function closePopup() {
-        document.getElementById('overlay').style.display = 'none';
-        document.getElementById('successPopup').style.display = 'none';
-        // Reload page to reset
         window.location.href = '/admin'; 
     }
 
@@ -175,16 +144,12 @@
         const btn = document.getElementById('uptimeBtn');
         const url = document.getElementById('botUrlInput').value;
         
-        if (!url || url === "undefined") {
-            alert("URL not found! Wait for Render to finish building.");
-            return;
-        }
-
         btn.innerText = "Adding...";
         btn.disabled = true;
 
+        // Hum apne hi backend ko call karenge (NO CORS ERROR)
         try {
-            const response = await fetch(UPTIME_SERVICE_URL, {
+            const response = await fetch('/api/add-uptime', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ url: url })
@@ -200,9 +165,9 @@
                 btn.style.background = "#da3633";
             }
         } catch (e) {
-            btn.innerText = "❌ Connection Failed";
+            btn.innerText = "❌ Failed";
             btn.style.background = "#da3633";
-            alert("Check if Uptime Bot URL is correct!");
+            alert("Backend Error: " + e.message);
         }
     }
 </script>

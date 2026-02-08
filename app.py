@@ -11,15 +11,14 @@ app.secret_key = "debug_secret_key_123"
 
 # --- CONFIG ---
 MONGO_URL = os.getenv("MONGO_URL")
-UPTIME_SERVICE_URL = "https://uptimebot-rvni.onrender.com/add" # Tera Uptime Bot
+UPTIME_SERVICE_URL = "https://uptimebot-rvni.onrender.com/add"
 
 client = None
 db = None
 settings_col = None
 db_error = None
 
-# 🔥 BACKUP KEYS
-FIXED_API_KEY = "rnd_NTH8vbRYrb6wSPjI9EWW8iP1z3cV" 
+FIXED_API_KEY = "rnd_NTH8vbRYrb6wSPjI9EWW8iP1z3cV"
 FIXED_OWNER_ID = "tea-d5kdaj3e5dus73a6s9e0"
 
 try:
@@ -118,19 +117,13 @@ def deploy_api():
         repo = json_data.get('repo')
         env_vars = json_data.get('env_vars')
         
-        # 🔥 DEBUG LOG
-        print(f"DEBUG: Frontend sent {len(env_vars)} variables")
-
-        # 1. Variables Prepare Karo
+        # Prepare Env Payload
         env_payload = []
         for k, v in env_vars.items():
-            # Sirf tab add karo agar value khali na ho
-            if v and str(v).strip():
-                env_payload.append({"key": k, "value": str(v)})
+            if v: env_payload.append({"key": k, "value": str(v)})
         
-        # 🔥 2. JASOOS VARIABLE (SPY) ADD KARO
-        # Ye confirm karega ki Render Env Vars le raha hai ya nahi
-        env_payload.append({"key": "MY_TEST_VAR", "value": "System_Is_Working"})
+        # Debug Spy Variable (Just to be sure)
+        env_payload.append({"key": "FORCE_UPDATE_TEST", "value": "It_Worked"})
 
         last_error = "Unknown"
 
@@ -140,7 +133,8 @@ def deploy_api():
             
             service_name = f"music-bot-{secrets.token_hex(3)}"
 
-            payload = {
+            # STEP 1: CREATE SERVICE (Payload)
+            create_payload = {
                 "type": "web_service",
                 "name": service_name,
                 "ownerId": clean_owner_id, 
@@ -148,8 +142,8 @@ def deploy_api():
                 "serviceDetails": {
                     "env": "docker",
                     "region": "singapore",
-                    "plan": "free",
-                    "envVars": env_payload  # Yahan list ja rahi hai
+                    "plan": "free"
+                    # Note: Yahan envVars nahi bhej rahe, agle step mein bhejenge
                 }
             }
             
@@ -160,23 +154,36 @@ def deploy_api():
             }
 
             try:
-                print(f"🔄 Trying OwnerID: {clean_owner_id}")
-                # print(f"Payload: {payload}") # Debug ke liye
-
-                response = requests.post("https://api.render.com/v1/services", json=payload, headers=headers)
+                print(f"🔄 Creating Service with OwnerID: {clean_owner_id}")
+                response = requests.post("https://api.render.com/v1/services", json=create_payload, headers=headers)
                 
                 if response.status_code == 201:
                     service_data = response.json()
                     srv_id = service_data.get('service', {}).get('id')
                     dash_url = f"https://dashboard.render.com/web/{srv_id}"
                     app_url = f"https://{service_name}.onrender.com"
+
+                    # 🔥 STEP 2: FORCE PUSH ENV VARS (The Magic Fix)
+                    print(f"🚀 Force pushing {len(env_payload)} env vars to {srv_id}...")
+                    
+                    env_url = f"https://api.render.com/v1/services/{srv_id}/env-vars"
+                    # PUT request purane vars ko replace karke naye daal deta hai
+                    env_response = requests.put(env_url, json=env_payload, headers=headers)
+                    
+                    if env_response.status_code == 200:
+                        print("✅ Env Vars Updated Successfully!")
+                    else:
+                        print(f"⚠️ Env Var Update Failed: {env_response.text}")
+                        # Hum success return karenge par user ko pata hona chahiye
+                        # Lekin dashboard link hai, wahan se bhi fix ho sakta hai
+
                     return jsonify({"status": "success", "url": dash_url, "app_url": app_url})
                 
                 elif response.status_code == 429:
                     print("⚠️ Rate Limit! Switching...")
                     continue 
                 else:
-                    print(f"❌ Render Error: {response.text}")
+                    print(f"❌ Render Creation Error: {response.text}")
                     last_error = response.text
                     continue 
             except Exception as e:

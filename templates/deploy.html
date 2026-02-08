@@ -4,28 +4,63 @@
     <meta charset="UTF-8">
     <title>Confirm Deployment</title>
     <style>
-        body { background-color: #000; color: #fff; font-family: sans-serif; display: flex; justify-content: center; padding-top: 50px; }
-        .container { background: #111; padding: 30px; border-radius: 12px; border: 1px solid #333; width: 450px; }
-        h2 { color: #0070f3; text-align: center; }
+        /* --- CORE STYLES --- */
+        body { background-color: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; display: flex; justify-content: center; padding-top: 50px; margin: 0; }
+        .container { background: #161b22; padding: 30px; border-radius: 12px; border: 1px solid #30363d; width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        h2 { color: #58a6ff; text-align: center; margin-top: 0; }
         
-        .info-group { margin-bottom: 15px; }
-        label { display: block; color: #888; font-size: 12px; margin-bottom: 5px; }
-        input { width: 100%; padding: 10px; background: #222; border: 1px solid #444; color: white; border-radius: 5px; box-sizing: border-box;}
+        .info-group { margin-bottom: 20px; }
+        label { display: block; color: #8b949e; font-size: 13px; margin-bottom: 8px; font-weight: 600; }
+        input { width: 100%; padding: 12px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
+        input:focus { border-color: #58a6ff; }
         
         .vars-box {
-            background: #000; border: 1px solid #333; padding: 10px;
+            background: #0d1117; border: 1px solid #30363d; padding: 15px;
             max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px;
-            margin-bottom: 20px; border-radius: 5px;
+            margin-bottom: 20px; border-radius: 6px; color: #e6edf3;
         }
         
+        /* --- BUTTONS --- */
         .deploy-btn {
             width: 100%; padding: 15px; background: #238636; color: white;
-            border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer;
+            border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s;
         }
         .deploy-btn:hover { background: #2ea043; }
-        .deploy-btn:disabled { background: #444; cursor: not-allowed; }
+        .deploy-btn:disabled { background: #30363d; color: #8b949e; cursor: not-allowed; }
 
-        #logs { margin-top: 15px; text-align: center; font-size: 14px; }
+        /* --- LOADING ANIMATION --- */
+        .loader-container { display: none; text-align: center; margin-top: 20px; }
+        .loader {
+            border: 4px solid #30363d;
+            border-top: 4px solid #58a6ff;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loading-text { color: #58a6ff; font-size: 14px; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+
+        /* --- POPUP STYLES --- */
+        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 998; backdrop-filter: blur(5px); }
+        .popup {
+            display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: #161b22; padding: 30px; border: 1px solid #238636; border-radius: 12px;
+            box-shadow: 0 0 50px rgba(35, 134, 54, 0.3); text-align: center; z-index: 999; width: 320px;
+        }
+        .popup h3 { color: #238636; margin-top: 0; font-size: 22px; }
+        .popup input { text-align: center; font-family: monospace; color: #58a6ff; border-color: #238636; }
+        
+        .btn-uptime { width: 100%; padding: 12px; background: #1f6feb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin: 15px 0; }
+        .btn-uptime:hover { background: #388bfd; }
+        
+        .btn-close { background: transparent; border: 1px solid #da3633; color: #da3633; padding: 8px 15px; border-radius: 6px; cursor: pointer; margin-top: 10px; font-size: 13px; }
+        .btn-close:hover { background: rgba(218, 54, 51, 0.1); }
+        
+        a.dash-link { color: #8b949e; font-size: 12px; text-decoration: none; }
+        a.dash-link:hover { color: #58a6ff; text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -39,33 +74,57 @@
     </div>
 
     <div class="info-group">
-        <label>Environment Variables (.env)</label>
+        <label>Environment Variables</label>
         <div class="vars-box">
             {% for key, value in env_vars.items() %}
                 <div style="margin-bottom: 4px;">
-                    <span style="color: #0070f3">{{ key }}</span> = <span style="color: #ccc">{{ value }}</span>
+                    <span style="color: #58a6ff">{{ key }}</span> = <span style="color: #8b949e">{{ value }}</span>
                 </div>
             {% endfor %}
         </div>
     </div>
 
-    <button onclick="startDeploy()" id="btn" class="deploy-btn">Click to Deploy on Render 🔥</button>
-    <p id="logs"></p>
+    <button onclick="startDeploy()" id="deployBtn" class="deploy-btn">Deploy on Render 🔥</button>
+    
+    <div id="loaderArea" class="loader-container">
+        <div class="loader"></div>
+        <div class="loading-text">Connecting to Render API... Please wait...</div>
+    </div>
+
+    <p id="errorLog" style="color: #da3633; text-align: center; font-size: 13px; margin-top: 10px;"></p>
+</div>
+
+<div id="overlay" class="overlay"></div>
+<div id="successPopup" class="popup">
+    <h3>🎉 Deployment Successful!</h3>
+    <p style="color: #8b949e; font-size: 13px;">Your bot is live. Add it to monitor to keep it awake.</p>
+    
+    <label style="text-align: left;">Bot Live URL:</label>
+    <input type="text" id="botUrlInput" readonly>
+    
+    <button onclick="addToUptime()" id="uptimeBtn" class="btn-uptime">📡 Add to Uptime Monitor</button>
+    
+    <a id="dashboardLink" href="#" target="_blank" class="dash-link">Open Render Dashboard ↗</a>
+    <br><br>
+    <button onclick="closePopup()" class="btn-close">Close</button>
 </div>
 
 <script>
-    // Python dictionary to JS Object
     const envData = {{ env_vars | tojson }};
+    
+    // 🔥 TERA UPTIME BOT URL (Endpoint /add jaruri hai)
+    const UPTIME_SERVICE_URL = "https://uptimebot-rvni.onrender.com/add"; 
 
     async function startDeploy() {
         const repoUrl = document.getElementById('repo').value;
-        const btn = document.getElementById('btn');
-        const logs = document.getElementById('logs');
+        const btn = document.getElementById('deployBtn');
+        const loader = document.getElementById('loaderArea');
+        const errorLog = document.getElementById('errorLog');
 
-        btn.disabled = true;
-        btn.innerText = "Processing...";
-        logs.innerText = "Connecting to Render API...";
-        logs.style.color = "yellow";
+        // UI Reset
+        btn.style.display = 'none'; // Button chhupa do
+        loader.style.display = 'block'; // Loader dikhao
+        errorLog.innerText = "";
 
         try {
             const res = await fetch('/api/deploy', {
@@ -80,24 +139,73 @@
             const data = await res.json();
 
             if (data.status === 'success') {
-                logs.innerText = "Success! Redirecting to Dashboard...";
-                logs.style.color = "#0f0";
-                setTimeout(() => {
-                    window.location.href = data.url;
-                }, 2000);
+                loader.style.display = 'none'; // Loader hatao
+                
+                // Popup dikhao
+                showPopup(data.app_url, data.url);
             } else {
-                logs.innerText = "Error: " + data.message;
-                logs.style.color = "red";
-                btn.disabled = false;
-                btn.innerText = "Try Again";
+                throw new Error(data.message);
             }
         } catch (e) {
-            logs.innerText = "Server Error: " + e;
-            btn.disabled = false;
+            loader.style.display = 'none';
+            btn.style.display = 'block'; // Button wapas lao
+            errorLog.innerText = "❌ Error: " + e.message;
+        }
+    }
+
+    // --- POPUP FUNCTIONS ---
+
+    function showPopup(appUrl, dashUrl) {
+        document.getElementById('overlay').style.display = 'block';
+        document.getElementById('successPopup').style.display = 'block';
+        
+        // Data bharo
+        document.getElementById('botUrlInput').value = appUrl;
+        document.getElementById('dashboardLink').href = dashUrl;
+    }
+
+    function closePopup() {
+        document.getElementById('overlay').style.display = 'none';
+        document.getElementById('successPopup').style.display = 'none';
+        // Reload page to reset
+        window.location.href = '/admin'; 
+    }
+
+    async function addToUptime() {
+        const btn = document.getElementById('uptimeBtn');
+        const url = document.getElementById('botUrlInput').value;
+        
+        if (!url || url === "undefined") {
+            alert("URL not found! Wait for Render to finish building.");
+            return;
+        }
+
+        btn.innerText = "Adding...";
+        btn.disabled = true;
+
+        try {
+            const response = await fetch(UPTIME_SERVICE_URL, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ url: url })
+            });
+            
+            const res = await response.json();
+            
+            if(res.status === 'success') {
+                btn.innerText = "✅ Successfully Added!";
+                btn.style.background = "#238636";
+            } else {
+                btn.innerText = "⚠️ " + res.message;
+                btn.style.background = "#da3633";
+            }
+        } catch (e) {
+            btn.innerText = "❌ Connection Failed";
+            btn.style.background = "#da3633";
+            alert("Check if Uptime Bot URL is correct!");
         }
     }
 </script>
 
 </body>
-  </html>
-  
+</html>

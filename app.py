@@ -4,6 +4,7 @@ import requests
 import os
 import secrets
 import traceback
+import random
 
 app = Flask(__name__)
 app.secret_key = "debug_secret_key_123"
@@ -23,23 +24,41 @@ try:
         client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=5000)
         db = client["DeployerBot"]
         settings_col = db["settings"]
-        client.server_info() # Connection test
+        client.server_info()
 except Exception as e:
     db_error = str(e)
 
-# --- HELPER FUNCTION ---
+# --- HELPER: SETTINGS ---
 def get_settings():
-    # 🔥 FIX: 'is None' check lagaya hai taaki crash na ho
     if settings_col is None:
-        return {"repo": "", "api_key": ""}
-    
+        return {"repo": "", "api_data": ""}
     try:
         data = settings_col.find_one({"_id": "config"})
-        if not data:
-            return {"repo": "", "api_key": ""}
-        return data
+        return data if data else {"repo": "", "api_data": ""}
     except:
-        return {"repo": "", "api_key": ""}
+        return {"repo": "", "api_data": ""}
+
+# --- HELPER: GET ALL ACCOUNTS (List) ---
+def get_all_accounts():
+    config = get_settings()
+    raw_data = config.get("api_data", "")
+    
+    if not raw_data:
+        return []
+
+    account_list = []
+    lines = [line.strip() for line in raw_data.split('\n') if line.strip()]
+    
+    for line in lines:
+        parts = line.split(',')
+        if len(parts) >= 2:
+            key = parts[0].strip()
+            owner = parts[1].strip()
+            account_list.append((key, owner))
+    
+    # List ko Randomize kar do taaki har baar pehli key par load na pade
+    random.shuffle(account_list)
+    return account_list
 
 # --- ROUTES ---
 
@@ -57,20 +76,18 @@ def admin():
         
         if request.method == 'POST':
             repo = request.form.get('repo')
-            api_key = request.form.get('api_key')
-            # Note: Owner ID ab hum form se nahi le rahe, wo code me fixed hai
+            api_data = request.form.get('api_data')
             
             if settings_col is not None:
                 settings_col.update_one(
                     {"_id": "config"}, 
-                    {"$set": {"repo": repo, "api_key": api_key}}, 
+                    {"$set": {"repo": repo, "api_data": api_data}}, 
                     upsert=True
                 )
             return redirect(url_for('admin'))
 
         config = get_settings()
         return render_template('admin.html', config=config)
-    
     except Exception as e:
         return f"<h1>❌ Admin Error</h1><pre>{traceback.format_exc()}</pre>"
 
@@ -81,72 +98,85 @@ def login():
         return redirect(url_for('admin'))
     return "Incorrect Password"
 
-# --- API DEPLOY ROUTE ---
 @app.route('/prepare', methods=['POST'])
 def prepare():
     data = request.form.to_dict()
-    
     config = get_settings()
     repo_url = data.get('repo_url')
     if not repo_url:
         repo_url = config.get('repo', 'https://github.com/TeamYukki/YukkiMusicBot')
     
-    if 'repo_url' in data:
-        del data['repo_url']
-
+    if 'repo_url' in data: del data['repo_url']
     return render_template('deploy.html', env_vars=data, repo_url=repo_url)
 
 @app.route('/api/deploy', methods=['POST'])
 def deploy_api():
     try:
-        config = get_settings()
-        api_key = config.get('api_key')
+        # 1. Saare Accounts ki list uthao
+        accounts = get_all_accounts()
 
-        # 🔥 HARDCODED OWNER ID (Ye rahi tumhari ID)
-        owner_id = "tea-d14i8bc9c44c738650qg"
-
-        if not api_key:
-            return jsonify({"status": "error", "message": "Admin ne Render API Key set nahi ki hai!"})
+        if not accounts:
+            return jsonify({"status": "error", "message": "No API Keys found in Admin Panel!"})
 
         json_data = request.json
         repo = json_data.get('repo')
         env_vars = json_data.get('env_vars')
-
-        # 1. Env Vars Format
-        env_payload = []
-        for key, value in env_vars.items():
-            env_payload.append({"key": key, "value": value})
-
-        # 2. Render Payload
-        payload = {
-            "serviceDetails": {
-                "type": "web_service",
-                "name": f"music-bot-{secrets.token_hex(3)}",
-                "repo": repo,
-                "env": "docker",
-                "region": "singapore",
-                "plan": "free",
-                "ownerId": owner_id,  # <--- YAHAN FIX KAR DIYA
-                "envVars": env_payload
+        
+        env_payload = [{"key": k, "value": v} for k, v in env_vars.items()]
+        
+        last_error_message = "Unknown Error"
+        
+        # 2. LOOP START: Ek-ek karke try karo
+        for api_key, owner_id in accounts:
+            
+            payload = {
+                "serviceDetails": {
+                    "type": "web_service",
+                    "name": f"music-bot-{secrets.token_hex(3)}",
+                    "repo": repo,
+                    "env": "docker",
+                    "region": "singapore",
+                    "plan": "free",
+                    "ownerId": owner_id,
+                    "envVars": env_payload
+                }
             }
-        }
-        
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
-        }
+            
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}"
+            }
 
-        url = "https://api.render.com/v1/services"
-        response = requests.post(url, json=payload, headers=headers)
-        
-        if response.status_code == 201:
-            service_data = response.json()
-            srv_id = service_data.get('service', {}).get('id')
-            dash_url = f"https://dashboard.render.com/web/{srv_id}"
-            return jsonify({"status": "success", "url": dash_url})
-        else:
-            return jsonify({"status": "error", "message": f"Render Error: {response.text}"})
+            try:
+                print(f"🔄 Trying Key: {api_key[:5]}... Owner: {owner_id}")
+                response = requests.post("https://api.render.com/v1/services", json=payload, headers=headers)
+                
+                # --- CASE 1: SUCCESS (201) ---
+                if response.status_code == 201:
+                    service_data = response.json()
+                    srv_id = service_data.get('service', {}).get('id')
+                    dash_url = f"https://dashboard.render.com/web/{srv_id}"
+                    return jsonify({"status": "success", "url": dash_url})
+                
+                # --- CASE 2: RATE LIMIT (429) ---
+                elif response.status_code == 429:
+                    print(f"⚠️ Rate Limit on Key {api_key[:5]}... Switching to Next Key.")
+                    last_error_message = "Rate Limit Exceeded on all keys."
+                    continue # Loop wapas chalega agli key ke sath
+                
+                # --- CASE 3: OTHER ERROR (Repo error, invalid name, etc.) ---
+                else:
+                    # Agar error rate limit nahi hai (jaise Invalid Repo), toh agla try karne ka faida nahi
+                    return jsonify({"status": "error", "message": f"Render Error: {response.text}"})
+
+            except Exception as e:
+                print(f"❌ Connection Error: {str(e)}")
+                last_error_message = str(e)
+                continue # Network error hua toh bhi next key try karo
+
+        # 3. Agar loop khatam ho gaya aur success nahi mili
+        return jsonify({"status": "error", "message": f"All API Keys Failed. Last Error: {last_error_message}"})
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})

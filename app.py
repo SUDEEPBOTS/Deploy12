@@ -1,4 +1,3 @@
-
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from pymongo import MongoClient
 import requests
@@ -6,7 +5,6 @@ import os
 import secrets
 import traceback
 import random
-import json
 
 app = Flask(__name__)
 app.secret_key = "debug_secret_key_123"
@@ -19,14 +17,13 @@ db = None
 settings_col = None
 db_error = None
 
-# 🔥🔥 YAHAN SAB HARDCODE KAR DIYA HAI 🔥🔥
-# Agar Admin Panel fail hua, toh ye use hoga.
+# 🔥 BACKUP CREDENTIALS (Agar Admin Panel khali ho)
 FIXED_API_KEY = "rnd_NTH8vbRYrb6wSPjI9EWW8iP1z3cV"
 FIXED_OWNER_ID = "tea-d5kdaj3e5dus73a6s9e0"
 
 try:
     if not MONGO_URL:
-        db_error = "MONGO_URL Environment Variable nahi mila! Vercel Settings check karo."
+        db_error = "MONGO_URL Environment Variable nahi mila!"
     else:
         client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=5000)
         db = client["DeployerBot"]
@@ -51,27 +48,19 @@ def get_all_accounts_list(shuffle=False):
     raw_data = config.get("api_data", "")
     
     account_list = []
-    
-    # Parsing logic with cleanup
     if raw_data:
         lines = [line.strip() for line in raw_data.split('\n') if line.strip()]
         for line in lines:
-            # Remove trailing commas and spaces
-            line = line.rstrip(',').strip()
             parts = line.split(',')
-            
             if len(parts) >= 1:
                 key = parts[0].strip()
-                # Agar ID hai to lo, nahi to FIXED ID use karo
                 if len(parts) >= 2 and parts[1].strip():
                     owner = parts[1].strip()
                 else:
                     owner = FIXED_OWNER_ID
-                
                 if key:
                     account_list.append((key, owner))
 
-    # 🔥 AGAR LIST KHALI HAI, TOH HARDCODED WALA ADD KAR DO
     if not account_list:
         account_list.append((FIXED_API_KEY, FIXED_OWNER_ID))
     
@@ -84,8 +73,7 @@ def get_all_accounts_list(shuffle=False):
 
 @app.route('/')
 def home():
-    if db_error:
-        return f"<h1>❌ Database Error</h1><p>{db_error}</p>"
+    if db_error: return f"<h1>❌ Database Error</h1><p>{db_error}</p>"
     return "Deployer Service is Online 🟢. Go to <a href='/admin'>/admin</a>"
 
 @app.route('/admin', methods=['GET'])
@@ -103,16 +91,13 @@ def admin_add():
     repo = request.form.get('repo')
     new_key = request.form.get('new_api_key').strip()
     new_owner = request.form.get('new_owner_id').strip()
-    if not new_owner: new_owner = FIXED_OWNER_ID # Fallback
+    if not new_owner: new_owner = FIXED_OWNER_ID
 
     current_config = get_settings()
     current_api_data = current_config.get("api_data", "")
     new_entry = f"{new_key},{new_owner}"
 
-    if current_api_data:
-        updated_api_data = current_api_data + "\n" + new_entry
-    else:
-        updated_api_data = new_entry
+    updated_api_data = (current_api_data + "\n" + new_entry) if current_api_data else new_entry
 
     settings_col.update_one({"_id": "config"}, {"$set": {"repo": repo, "api_data": updated_api_data}}, upsert=True)
     return redirect(url_for('admin'))
@@ -142,7 +127,6 @@ def prepare():
 @app.route('/api/deploy', methods=['POST'])
 def deploy_api():
     try:
-        # Accounts list lo
         accounts = get_all_accounts_list(shuffle=True)
         
         json_data = request.json
@@ -152,26 +136,22 @@ def deploy_api():
         
         last_error = "Unknown"
 
-        # --- LOOP ---
         for api_key, owner_id in accounts:
-            
-            # 🔥 FINAL SAFETY: Ensure ID string & clean
             clean_owner_id = str(owner_id).strip()
             if not clean_owner_id or len(clean_owner_id) < 5:
                 clean_owner_id = FIXED_OWNER_ID
-            
-            print(f"DEBUG: Using Key: ...{api_key[-5:]} | OwnerID: {clean_owner_id}")
 
+            # 🔥 CORRECT PAYLOAD STRUCTURE (OwnerId TOP LEVEL par hai)
             payload = {
+                "type": "web_service",
+                "name": f"music-bot-{secrets.token_hex(3)}",
+                "ownerId": clean_owner_id,  # <-- YAHAN HONA CHAHIYE
+                "repo": repo,
+                "branch": "master", # Optional but safe
                 "serviceDetails": {
-                    "type": "web_service",
-                    "name": f"music-bot-{secrets.token_hex(3)}",
-                    "repo": repo,
                     "env": "docker",
                     "region": "singapore",
                     "plan": "free",
-                    "ownerId": clean_owner_id, # Official Key
-                    "ownerID": clean_owner_id, # Backup Key (Just in case error was case-sensitive)
                     "envVars": env_payload
                 }
             }
@@ -183,9 +163,7 @@ def deploy_api():
             }
 
             try:
-                # DEBUG PRINT: Payload check karne ke liye
-                # print(f"DEBUG PAYLOAD: {json.dumps(payload)}")
-                
+                print(f"🔄 Trying with OwnerID: {clean_owner_id}")
                 response = requests.post("https://api.render.com/v1/services", json=payload, headers=headers)
                 
                 if response.status_code == 201:
@@ -200,8 +178,7 @@ def deploy_api():
                     continue 
                 
                 else:
-                    # Agar error aaye to print karo
-                    print(f"❌ Error for {clean_owner_id}: {response.text}")
+                    print(f"❌ Error: {response.text}")
                     last_error = response.text
                     continue 
 

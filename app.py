@@ -11,7 +11,7 @@ app.secret_key = "debug_secret_key_123"
 
 # --- CONFIG ---
 MONGO_URL = os.getenv("MONGO_URL")
-# 🔥 TERA UPTIME BOT URL YAHAN DALNA HAI
+# 🔥 TERA UPTIME BOT URL
 UPTIME_SERVICE_URL = "https://uptimebot-rvni.onrender.com/add"
 
 client = None
@@ -101,17 +101,17 @@ def prepare():
     if 'repo_url' in data: del data['repo_url']
     return render_template('deploy.html', env_vars=data, repo_url=repo_url)
 
-# 🔥 NEW ROUTE: PROXY TO UPTIME BOT (Solves CORS)
+# 🔥 FIX 1: TIMEOUT INCREASED TO 40 SECONDS
 @app.route('/api/add-uptime', methods=['POST'])
 def add_uptime_proxy():
     try:
         data = request.json
         url = data.get("url")
-        # Site C ko request bhejo
-        resp = requests.post(UPTIME_SERVICE_URL, json={"url": url}, timeout=5)
+        # Timeout badha diya taaki bot jag sake
+        resp = requests.post(UPTIME_SERVICE_URL, json={"url": url}, timeout=40)
         return jsonify(resp.json())
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
+        return jsonify({"status": "error", "message": f"Uptime Bot Timeout/Error: {str(e)}"})
 
 @app.route('/api/deploy', methods=['POST'])
 def deploy_api():
@@ -121,7 +121,10 @@ def deploy_api():
         repo = json_data.get('repo')
         env_vars = json_data.get('env_vars')
         
-        # 🔥 FIX 1: Convert all values to STRING
+        # 🔥 DEBUG PRINT: Check logs to see if vars are coming
+        print(f"DEBUG: Received Env Vars: {env_vars}")
+
+        # String Conversion
         env_payload = [{"key": k, "value": str(v)} for k, v in env_vars.items()]
         
         last_error = "Unknown"
@@ -141,7 +144,7 @@ def deploy_api():
                     "env": "docker",
                     "region": "singapore",
                     "plan": "free",
-                    "envVars": env_payload # Ab ye safe string list hai
+                    "envVars": env_payload 
                 }
             }
             

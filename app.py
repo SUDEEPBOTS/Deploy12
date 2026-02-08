@@ -1,3 +1,4 @@
+
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from pymongo import MongoClient
 import requests
@@ -5,6 +6,7 @@ import os
 import secrets
 import traceback
 import random
+import json
 
 app = Flask(__name__)
 app.secret_key = "debug_secret_key_123"
@@ -17,8 +19,10 @@ db = None
 settings_col = None
 db_error = None
 
-# 🔥 BACKUP ID: Agar DB se Owner ID na mile ya galat ho, toh ye use hogi
-BACKUP_OWNER_ID = "tea-d5kdaj3e5dus73a6s9e0"
+# 🔥🔥 YAHAN SAB HARDCODE KAR DIYA HAI 🔥🔥
+# Agar Admin Panel fail hua, toh ye use hoga.
+FIXED_API_KEY = "rnd_NTH8vbRYrb6wSPjI9EWW8iP1z3cV"
+FIXED_OWNER_ID = "tea-d5kdaj3e5dus73a6s9e0"
 
 try:
     if not MONGO_URL:
@@ -41,34 +45,35 @@ def get_settings():
     except:
         return {"repo": "", "api_data": ""}
 
-# --- HELPER: PARSE ACCOUNTS (Robust Logic) ---
+# --- HELPER: PARSE ACCOUNTS ---
 def get_all_accounts_list(shuffle=False):
     config = get_settings()
     raw_data = config.get("api_data", "")
     
     account_list = []
     
-    # Agar DB khali hai, toh kam se kam Backup ID ke sath ek dummy entry bhej do
-    # (Par API key chahiye hogi, isliye hum assume karte hain user ne DB fill kiya hai)
-    if not raw_data:
-        return []
+    # Parsing logic with cleanup
+    if raw_data:
+        lines = [line.strip() for line in raw_data.split('\n') if line.strip()]
+        for line in lines:
+            # Remove trailing commas and spaces
+            line = line.rstrip(',').strip()
+            parts = line.split(',')
+            
+            if len(parts) >= 1:
+                key = parts[0].strip()
+                # Agar ID hai to lo, nahi to FIXED ID use karo
+                if len(parts) >= 2 and parts[1].strip():
+                    owner = parts[1].strip()
+                else:
+                    owner = FIXED_OWNER_ID
+                
+                if key:
+                    account_list.append((key, owner))
 
-    # Line by line split karo
-    lines = [line.strip() for line in raw_data.split('\n') if line.strip()]
-    
-    for line in lines:
-        parts = line.split(',')
-        if len(parts) >= 1:
-            key = parts[0].strip()
-            
-            # Agar Owner ID hai toh use karo, warna BACKUP use karo
-            if len(parts) >= 2 and parts[1].strip():
-                owner = parts[1].strip()
-            else:
-                owner = BACKUP_OWNER_ID
-            
-            if key:
-                account_list.append((key, owner))
+    # 🔥 AGAR LIST KHALI HAI, TOH HARDCODED WALA ADD KAR DO
+    if not account_list:
+        account_list.append((FIXED_API_KEY, FIXED_OWNER_ID))
     
     if shuffle:
         random.shuffle(account_list)
@@ -83,18 +88,13 @@ def home():
         return f"<h1>❌ Database Error</h1><p>{db_error}</p>"
     return "Deployer Service is Online 🟢. Go to <a href='/admin'>/admin</a>"
 
-# --- ADMIN: SHOW PAGE ---
 @app.route('/admin', methods=['GET'])
 def admin():
-    if 'is_admin' not in session:
-        return render_template('login.html')
-    
+    if 'is_admin' not in session: return render_template('login.html')
     config = get_settings()
     accounts = get_all_accounts_list(shuffle=False)
-    
     return render_template('admin.html', config=config, accounts=accounts)
 
-# --- ADMIN: ADD ACCOUNT ---
 @app.route('/admin/add', methods=['POST'])
 def admin_add():
     if 'is_admin' not in session: return redirect(url_for('login'))
@@ -103,10 +103,7 @@ def admin_add():
     repo = request.form.get('repo')
     new_key = request.form.get('new_api_key').strip()
     new_owner = request.form.get('new_owner_id').strip()
-
-    # Agar user ne Owner ID nahi daali, toh Backup ID save kar lo
-    if not new_owner:
-        new_owner = BACKUP_OWNER_ID
+    if not new_owner: new_owner = FIXED_OWNER_ID # Fallback
 
     current_config = get_settings()
     current_api_data = current_config.get("api_data", "")
@@ -117,23 +114,13 @@ def admin_add():
     else:
         updated_api_data = new_entry
 
-    settings_col.update_one(
-        {"_id": "config"}, 
-        {"$set": {"repo": repo, "api_data": updated_api_data}}, 
-        upsert=True
-    )
+    settings_col.update_one({"_id": "config"}, {"$set": {"repo": repo, "api_data": updated_api_data}}, upsert=True)
     return redirect(url_for('admin'))
 
-# --- ADMIN: CLEAR ALL ---
 @app.route('/admin/clear', methods=['POST'])
 def admin_clear():
     if 'is_admin' not in session: return redirect(url_for('login'))
-    if settings_col is not None:
-        settings_col.update_one(
-            {"_id": "config"}, 
-            {"$set": {"api_data": ""}},
-            upsert=True
-        )
+    if settings_col: settings_col.update_one({"_id": "config"}, {"$set": {"api_data": ""}}, upsert=True)
     return redirect(url_for('admin'))
 
 @app.route('/login', methods=['POST'])
@@ -148,34 +135,32 @@ def prepare():
     data = request.form.to_dict()
     config = get_settings()
     repo_url = data.get('repo_url')
-    if not repo_url:
-        repo_url = config.get('repo', 'https://github.com/TeamYukki/YukkiMusicBot')
-    
+    if not repo_url: repo_url = config.get('repo', 'https://github.com/TeamYukki/YukkiMusicBot')
     if 'repo_url' in data: del data['repo_url']
     return render_template('deploy.html', env_vars=data, repo_url=repo_url)
 
 @app.route('/api/deploy', methods=['POST'])
 def deploy_api():
     try:
+        # Accounts list lo
         accounts = get_all_accounts_list(shuffle=True)
-
-        if not accounts:
-            return jsonify({"status": "error", "message": "Admin Panel khali hai! Accounts add karo."})
-
+        
         json_data = request.json
         repo = json_data.get('repo')
         env_vars = json_data.get('env_vars')
-        
         env_payload = [{"key": k, "value": v} for k, v in env_vars.items()]
         
-        last_error = "Unknown Error"
+        last_error = "Unknown"
 
-        # --- LOOP THROUGH ACCOUNTS ---
+        # --- LOOP ---
         for api_key, owner_id in accounts:
             
-            # Extra Safety: Agar Owner ID khali hai to Backup use karo
-            if not owner_id or len(owner_id) < 5:
-                owner_id = BACKUP_OWNER_ID
+            # 🔥 FINAL SAFETY: Ensure ID string & clean
+            clean_owner_id = str(owner_id).strip()
+            if not clean_owner_id or len(clean_owner_id) < 5:
+                clean_owner_id = FIXED_OWNER_ID
+            
+            print(f"DEBUG: Using Key: ...{api_key[-5:]} | OwnerID: {clean_owner_id}")
 
             payload = {
                 "serviceDetails": {
@@ -185,7 +170,8 @@ def deploy_api():
                     "env": "docker",
                     "region": "singapore",
                     "plan": "free",
-                    "ownerId": str(owner_id),
+                    "ownerId": clean_owner_id, # Official Key
+                    "ownerID": clean_owner_id, # Backup Key (Just in case error was case-sensitive)
                     "envVars": env_payload
                 }
             }
@@ -197,35 +183,34 @@ def deploy_api():
             }
 
             try:
-                print(f"🔄 Trying Key: ...{api_key[-4:]} | Owner: {owner_id}")
+                # DEBUG PRINT: Payload check karne ke liye
+                # print(f"DEBUG PAYLOAD: {json.dumps(payload)}")
+                
                 response = requests.post("https://api.render.com/v1/services", json=payload, headers=headers)
                 
-                # CASE 1: SUCCESS ✅
                 if response.status_code == 201:
                     service_data = response.json()
                     srv_id = service_data.get('service', {}).get('id')
                     dash_url = f"https://dashboard.render.com/web/{srv_id}"
                     return jsonify({"status": "success", "url": dash_url})
                 
-                # CASE 2: RATE LIMIT ⚠️ (Try Next)
                 elif response.status_code == 429:
-                    print("⚠️ Rate Limit Hit! Switching to next account...")
-                    last_error = "Rate Limit Exceeded on this key."
+                    print("⚠️ Rate Limit! Switching...")
+                    last_error = "Rate Limit Hit"
                     continue 
                 
-                # CASE 3: OTHER ERROR ❌ (Try Next - Shayad Owner ID galat ho, dusri key chal jaye)
                 else:
-                    print(f"❌ Render Error: {response.text}")
-                    last_error = f"Render Error: {response.text}"
-                    continue # <--- YAHAN CHANGE KIYA HAI (Pehle 'return' tha)
+                    # Agar error aaye to print karo
+                    print(f"❌ Error for {clean_owner_id}: {response.text}")
+                    last_error = response.text
+                    continue 
 
             except Exception as e:
-                print(f"❌ Connection Error: {e}")
+                print(f"Network Error: {e}")
                 last_error = str(e)
                 continue
 
-        # Agar loop khatam ho gaya aur koi success nahi mili
-        return jsonify({"status": "error", "message": f"All accounts failed. Last Error: {last_error}"})
+        return jsonify({"status": "error", "message": f"All Failed. Last Error: {last_error}"})
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})

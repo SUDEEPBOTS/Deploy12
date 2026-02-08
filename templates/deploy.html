@@ -12,27 +12,25 @@
         label { display: block; color: #8b949e; font-size: 13px; margin-bottom: 8px; font-weight: 600; }
         input.main-input { width: 100%; padding: 12px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
         
-        /* ENV VARS BOX */
         .vars-box {
             background: #0d1117; border: 1px solid #30363d; padding: 15px;
             max-height: 300px; overflow-y: auto; border-radius: 6px;
         }
         .env-row { display: flex; gap: 10px; margin-bottom: 8px; align-items: center; }
         .env-key { color: #58a6ff; font-family: monospace; font-size: 12px; width: 30%; word-break: break-all; }
-        .env-val { background: #161b22; border: 1px solid #30363d; color: #e6edf3; padding: 5px; width: 70%; border-radius: 4px; font-size: 12px; }
         
-        /* BUTTONS */
+        /* 🔥 FIX: Added specific class for JS selection */
+        .env-input-val { background: #161b22; border: 1px solid #30363d; color: #e6edf3; padding: 5px; width: 70%; border-radius: 4px; font-size: 12px; }
+        
         .deploy-btn { width: 100%; padding: 15px; background: #238636; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .deploy-btn:hover { background: #2ea043; }
         
-        /* LOADER */
         .loader-area { display: none; text-align: center; margin-top: 20px; }
         .spinner { width: 40px; height: 40px; border: 4px solid #30363d; border-top: 4px solid #58a6ff; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .loading-text { color: #58a6ff; font-size: 14px; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
 
-        /* POPUP */
         .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 998; backdrop-filter: blur(5px); }
         .popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #161b22; padding: 30px; border: 1px solid #238636; border-radius: 12px; box-shadow: 0 0 50px rgba(35, 134, 54, 0.3); text-align: center; z-index: 999; width: 320px; }
         .btn-uptime { width: 100%; padding: 12px; background: #1f6feb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin: 15px 0; }
@@ -50,12 +48,12 @@
     </div>
 
     <div class="info-group">
-        <label>Environment Variables (Check values!)</label>
+        <label>Environment Variables (Confirm Values)</label>
         <div class="vars-box" id="envContainer">
             {% for key, value in env_vars.items() %}
                 <div class="env-row">
                     <span class="env-key">{{ key }}</span>
-                    <input type="text" class="env-val" name="{{ key }}" value="{{ value }}">
+                    <input type="text" class="env-input-val" data-key="{{ key }}" value="{{ value }}">
                 </div>
             {% endfor %}
         </div>
@@ -92,12 +90,18 @@
         const loader = document.getElementById('loaderArea');
         const errorLog = document.getElementById('errorLog');
 
-        // Collect Env Vars from Inputs (Jo dikh raha hai wahi jayega)
-        const envInputs = document.querySelectorAll('#envContainer input');
+        // 🔥 FIX: Better Logic to Grab Inputs
+        const inputs = document.querySelectorAll('.env-input-val');
         let envData = {};
-        envInputs.forEach(input => {
-            envData[input.name] = input.value;
+        
+        inputs.forEach(input => {
+            let key = input.getAttribute('data-key');
+            let val = input.value;
+            envData[key] = val;
         });
+
+        // Debugging ke liye alert (deploy hote hi hatega)
+        console.log("Sending Vars:", envData);
 
         btn.style.display = 'none';
         loader.style.display = 'block';
@@ -128,7 +132,6 @@
         }
     }
 
-    // --- POPUP LOGIC ---
     function showPopup(appUrl, dashUrl) {
         document.getElementById('overlay').style.display = 'block';
         document.getElementById('successPopup').style.display = 'block';
@@ -144,11 +147,11 @@
         const btn = document.getElementById('uptimeBtn');
         const url = document.getElementById('botUrlInput').value;
         
-        btn.innerText = "Adding...";
+        btn.innerText = "Connecting to Uptime Bot...";
         btn.disabled = true;
 
-        // Hum apne hi backend ko call karenge (NO CORS ERROR)
         try {
+            // Ab timeout 40s hai, toh agar bot so raha hoga toh jag jayega
             const response = await fetch('/api/add-uptime', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},

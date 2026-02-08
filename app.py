@@ -17,6 +17,9 @@ db = None
 settings_col = None
 db_error = None
 
+# 🔥 BACKUP ID: Agar DB se Owner ID na mile ya galat ho, toh ye use hogi
+BACKUP_OWNER_ID = "tea-d5kdaj3e5dus73a6s9e0"
+
 try:
     if not MONGO_URL:
         db_error = "MONGO_URL Environment Variable nahi mila! Vercel Settings check karo."
@@ -38,24 +41,34 @@ def get_settings():
     except:
         return {"repo": "", "api_data": ""}
 
-# --- HELPER: PARSE ACCOUNTS (String to List) ---
+# --- HELPER: PARSE ACCOUNTS (Robust Logic) ---
 def get_all_accounts_list(shuffle=False):
     config = get_settings()
     raw_data = config.get("api_data", "")
     
+    account_list = []
+    
+    # Agar DB khali hai, toh kam se kam Backup ID ke sath ek dummy entry bhej do
+    # (Par API key chahiye hogi, isliye hum assume karte hain user ne DB fill kiya hai)
     if not raw_data:
         return []
 
-    account_list = []
     # Line by line split karo
     lines = [line.strip() for line in raw_data.split('\n') if line.strip()]
     
     for line in lines:
         parts = line.split(',')
-        if len(parts) >= 2:
+        if len(parts) >= 1:
             key = parts[0].strip()
-            owner = parts[1].strip()
-            account_list.append((key, owner))
+            
+            # Agar Owner ID hai toh use karo, warna BACKUP use karo
+            if len(parts) >= 2 and parts[1].strip():
+                owner = parts[1].strip()
+            else:
+                owner = BACKUP_OWNER_ID
+            
+            if key:
+                account_list.append((key, owner))
     
     if shuffle:
         random.shuffle(account_list)
@@ -77,54 +90,48 @@ def admin():
         return render_template('login.html')
     
     config = get_settings()
-    # List nikalo taaki table me dikha sakein
     accounts = get_all_accounts_list(shuffle=False)
     
     return render_template('admin.html', config=config, accounts=accounts)
 
-# --- ADMIN: ADD ACCOUNT (Append Logic) ---
+# --- ADMIN: ADD ACCOUNT ---
 @app.route('/admin/add', methods=['POST'])
 def admin_add():
     if 'is_admin' not in session: return redirect(url_for('login'))
-
     if settings_col is None: return "Database Error"
 
-    # Form se data lo
     repo = request.form.get('repo')
     new_key = request.form.get('new_api_key').strip()
     new_owner = request.form.get('new_owner_id').strip()
 
-    # Purana data fetch karo
+    # Agar user ne Owner ID nahi daali, toh Backup ID save kar lo
+    if not new_owner:
+        new_owner = BACKUP_OWNER_ID
+
     current_config = get_settings()
     current_api_data = current_config.get("api_data", "")
-
-    # Naya data formatting (Comma laga ke)
     new_entry = f"{new_key},{new_owner}"
 
-    # Agar pehle se data hai to nayi line me add karo, warna seedha
     if current_api_data:
         updated_api_data = current_api_data + "\n" + new_entry
     else:
         updated_api_data = new_entry
 
-    # Save to DB
     settings_col.update_one(
         {"_id": "config"}, 
         {"$set": {"repo": repo, "api_data": updated_api_data}}, 
         upsert=True
     )
-    
     return redirect(url_for('admin'))
 
-# --- ADMIN: CLEAR ALL (Reset) ---
+# --- ADMIN: CLEAR ALL ---
 @app.route('/admin/clear', methods=['POST'])
 def admin_clear():
     if 'is_admin' not in session: return redirect(url_for('login'))
-    
     if settings_col is not None:
         settings_col.update_one(
             {"_id": "config"}, 
-            {"$set": {"api_data": ""}}, # Sirf API data saaf karo, repo rehne do
+            {"$set": {"api_data": ""}},
             upsert=True
         )
     return redirect(url_for('admin'))
@@ -150,11 +157,10 @@ def prepare():
 @app.route('/api/deploy', methods=['POST'])
 def deploy_api():
     try:
-        # 1. Randomize karke saare accounts uthao
         accounts = get_all_accounts_list(shuffle=True)
 
         if not accounts:
-            return jsonify({"status": "error", "message": "No Accounts found! Admin Panel me add karo."})
+            return jsonify({"status": "error", "message": "Admin Panel khali hai! Accounts add karo."})
 
         json_data = request.json
         repo = json_data.get('repo')
@@ -162,11 +168,15 @@ def deploy_api():
         
         env_payload = [{"key": k, "value": v} for k, v in env_vars.items()]
         
-        last_error = "Unknown"
+        last_error = "Unknown Error"
 
-        # 2. Loop through accounts
+        # --- LOOP THROUGH ACCOUNTS ---
         for api_key, owner_id in accounts:
             
+            # Extra Safety: Agar Owner ID khali hai to Backup use karo
+            if not owner_id or len(owner_id) < 5:
+                owner_id = BACKUP_OWNER_ID
+
             payload = {
                 "serviceDetails": {
                     "type": "web_service",
@@ -175,7 +185,7 @@ def deploy_api():
                     "env": "docker",
                     "region": "singapore",
                     "plan": "free",
-                    "ownerId": owner_id,
+                    "ownerId": str(owner_id),
                     "envVars": env_payload
                 }
             }
@@ -187,28 +197,34 @@ def deploy_api():
             }
 
             try:
-                print(f"🔄 Trying Key ending in...{api_key[-4:]}")
+                print(f"🔄 Trying Key: ...{api_key[-4:]} | Owner: {owner_id}")
                 response = requests.post("https://api.render.com/v1/services", json=payload, headers=headers)
                 
+                # CASE 1: SUCCESS ✅
                 if response.status_code == 201:
                     service_data = response.json()
                     srv_id = service_data.get('service', {}).get('id')
                     dash_url = f"https://dashboard.render.com/web/{srv_id}"
                     return jsonify({"status": "success", "url": dash_url})
                 
+                # CASE 2: RATE LIMIT ⚠️ (Try Next)
                 elif response.status_code == 429:
-                    print("⚠️ Rate Limit! Trying next account...")
-                    last_error = "Rate Limit Exceeded"
-                    continue # Next key try karo
+                    print("⚠️ Rate Limit Hit! Switching to next account...")
+                    last_error = "Rate Limit Exceeded on this key."
+                    continue 
                 
+                # CASE 3: OTHER ERROR ❌ (Try Next - Shayad Owner ID galat ho, dusri key chal jaye)
                 else:
-                    return jsonify({"status": "error", "message": f"Render Error: {response.text}"})
+                    print(f"❌ Render Error: {response.text}")
+                    last_error = f"Render Error: {response.text}"
+                    continue # <--- YAHAN CHANGE KIYA HAI (Pehle 'return' tha)
 
             except Exception as e:
-                print(f"Connection Error: {e}")
+                print(f"❌ Connection Error: {e}")
                 last_error = str(e)
                 continue
 
+        # Agar loop khatam ho gaya aur koi success nahi mili
         return jsonify({"status": "error", "message": f"All accounts failed. Last Error: {last_error}"})
 
     except Exception as e:

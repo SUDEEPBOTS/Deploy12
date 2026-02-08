@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Panel</title>
+    <style>
+        body { background: #0d1117; color: white; font-family: monospace; display: flex; justify-content: center; padding-top: 50px;}
+        form { background: #161b22; padding: 40px; border: 1px solid #30363d; width: 400px; border-radius: 10px; }
+        input { width: 100%; padding: 10px; margin: 10px 0; background: #0d1117; border: 1px solid #30363d; color: white; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background: #238636; color: white; border: none; cursor: pointer; margin-top: 10px;}
+        h2 { text-align: center; margin-top: 0; }
+    </style>
+</head>
+<body>
+    <form method="POST">
+        <h2>⚙️ Admin Settings</h2>
+        
+        <label>Default Repo URL</label>
+        <input type="text" name="repo" value="{{ config.repo }}" placeholder="https://github.com/...">
+        
+        <label>Render API Key (rnd_...)</label>
+        <input type="password" name="api_key" value="{{ config.api_key }}" placeholder="Paste API Key here">
+        
+        <label>Owner ID (Optional)</label>
+        <input type="text" name="owner_id" value="{{ config.owner_id }}" placeholder="Leave empty for personal account">
+        
+        <button type="submit">Save Settings 💾</button>
+    </form>
+</body>
+</html>

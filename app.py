@@ -101,17 +101,16 @@ def prepare():
     if 'repo_url' in data: del data['repo_url']
     return render_template('deploy.html', env_vars=data, repo_url=repo_url)
 
-# 🔥 FIX 1: TIMEOUT INCREASED TO 40 SECONDS
 @app.route('/api/add-uptime', methods=['POST'])
 def add_uptime_proxy():
     try:
         data = request.json
         url = data.get("url")
-        # Timeout badha diya taaki bot jag sake
+        # Timeout 40 seconds hai
         resp = requests.post(UPTIME_SERVICE_URL, json={"url": url}, timeout=40)
         return jsonify(resp.json())
     except Exception as e:
-        return jsonify({"status": "error", "message": f"Uptime Bot Timeout/Error: {str(e)}"})
+        return jsonify({"status": "error", "message": f"Uptime Error: {str(e)}"})
 
 @app.route('/api/deploy', methods=['POST'])
 def deploy_api():
@@ -121,10 +120,10 @@ def deploy_api():
         repo = json_data.get('repo')
         env_vars = json_data.get('env_vars')
         
-        # 🔥 DEBUG PRINT: Check logs to see if vars are coming
+        # 🔥 DEBUG LOG: Ye server logs me dikhega ki data aaya ya nahi
         print(f"DEBUG: Received Env Vars: {env_vars}")
 
-        # String Conversion
+        # String Conversion (Zaroori hai API_ID jaise numbers ke liye)
         env_payload = [{"key": k, "value": str(v)} for k, v in env_vars.items()]
         
         last_error = "Unknown"
@@ -155,7 +154,7 @@ def deploy_api():
             }
 
             try:
-                print(f"🔄 Trying with OwnerID: {clean_owner_id}")
+                print(f"🔄 Trying OwnerID: {clean_owner_id}")
                 response = requests.post("https://api.render.com/v1/services", json=payload, headers=headers)
                 
                 if response.status_code == 201:
@@ -170,7 +169,7 @@ def deploy_api():
                     print("⚠️ Rate Limit! Switching...")
                     continue 
                 else:
-                    print(f"❌ Error: {response.text}")
+                    print(f"❌ Render Error: {response.text}")
                     last_error = response.text
                     continue 
             except Exception as e:

@@ -11,7 +11,6 @@
         label { display: block; color: #8b949e; font-size: 12px; margin-bottom: 5px; font-weight: bold; }
         input { width: 100%; padding: 10px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 5px; box-sizing: border-box; margin-bottom: 10px; }
         
-        /* SCROLLABLE BOX */
         .vars-box {
             background: #0d1117; border: 1px solid #30363d; padding: 10px;
             max-height: 400px; overflow-y: auto; border-radius: 5px; margin-bottom: 15px;
@@ -20,7 +19,6 @@
         .deploy-btn { width: 100%; padding: 12px; background: #238636; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
         .loader-area { display: none; text-align: center; color: #58a6ff; margin-top: 15px; }
 
-        /* POPUP */
         .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; }
         .popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #161b22; padding: 25px; border: 1px solid #238636; border-radius: 10px; text-align: center; z-index: 101; width: 300px; }
         .btn-uptime { width: 100%; padding: 10px; background: #1f6feb; color: white; border: none; border-radius: 5px; margin-top: 10px; cursor: pointer; }
@@ -37,14 +35,8 @@
 
     <label>Environment Variables (Confirm Values)</label>
     
-    <form id="envForm">
-        <div class="vars-box">
-            {% for key, value in env_vars.items() %}
-                <label style="color: #58a6ff;">{{ key }}</label>
-                <input type="text" name="{{ key }}" value="{{ value }}">
-            {% endfor %}
-        </div>
-    </form>
+    <div id="envContainer" class="vars-box"></div>
+
     <button onclick="startDeploy()" id="deployBtn" class="deploy-btn">Deploy on Render 🔥</button>
     
     <div id="loaderArea" class="loader-area">
@@ -57,39 +49,54 @@
 <div id="overlay" class="overlay"></div>
 <div id="successPopup" class="popup">
     <h3 style="color: #238636;">🎉 Deployment Successful!</h3>
-    <p style="color: #888; font-size: 12px;">Bot URL:</p>
     <input type="text" id="botUrlInput" readonly style="text-align: center;">
-    
     <button onclick="addToUptime()" id="uptimeBtn" class="btn-uptime">📡 Add to Uptime Monitor</button>
-    <br>
-    <a id="dashboardLink" href="#" target="_blank" style="color: #58a6ff; font-size: 12px;">Open Dashboard</a>
-    <br>
+    <br><br>
     <button onclick="closePopup()" class="btn-close">Close</button>
 </div>
 
 <script>
+    // 🔥 STEP 1: Flask se data ko Safe JSON mein lo
+    const safeEnvVars = {{ env_vars | tojson }};
+    const container = document.getElementById('envContainer');
+
+    // 🔥 STEP 2: JS se Inputs banao (Taaki special characters break na karein)
+    for (const [key, value] of Object.entries(safeEnvVars)) {
+        const label = document.createElement('label');
+        label.style.color = "#58a6ff";
+        label.innerText = key;
+        
+        const input = document.createElement('input');
+        input.type = "text";
+        input.className = "env-input-field"; // Class di taaki baad me select kar sakein
+        input.setAttribute("data-key", key);
+        input.value = value; // JS value setting is safe from HTML bugs
+
+        container.appendChild(label);
+        container.appendChild(input);
+    }
+
     async function startDeploy() {
         const repoUrl = document.getElementById('repo').value;
         const btn = document.getElementById('deployBtn');
         const loader = document.getElementById('loaderArea');
         const errorLog = document.getElementById('errorLog');
 
-        // 🔥 MAGIC FIX: FormData use kar rahe hain
-        // Ye form ke andar ki har input value ko zabardasti nikal lega
-        const formElement = document.getElementById('envForm');
-        const formData = new FormData(formElement);
-        let envData = {};
+        // 🔥 STEP 3: Inputs se data collect karo
+        const inputs = document.querySelectorAll('.env-input-field');
+        let finalEnvData = {};
         
-        formData.forEach((value, key) => {
-            envData[key] = value.trim(); // Trim extra spaces
+        inputs.forEach(input => {
+            let key = input.getAttribute('data-key');
+            let val = input.value;
+            finalEnvData[key] = val;
         });
 
-        // Debugging: Console check karna agar error aaye
-        console.log("Sending Data:", envData); 
+        console.log("Sending Data:", finalEnvData); 
 
-        // Check if data is empty
-        if (Object.keys(envData).length === 0) {
-            alert("Error: No Environment Variables found!");
+        // Check if empty
+        if (Object.keys(finalEnvData).length === 0) {
+            errorLog.innerText = "❌ Error: No Environment Variables found!";
             return;
         }
 
@@ -103,7 +110,7 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     repo: repoUrl,
-                    env_vars: envData
+                    env_vars: finalEnvData
                 })
             });
 
@@ -122,44 +129,36 @@
         }
     }
 
+    // Popup Functions
     function showPopup(appUrl, dashUrl) {
         document.getElementById('overlay').style.display = 'block';
         document.getElementById('successPopup').style.display = 'block';
         document.getElementById('botUrlInput').value = appUrl;
-        document.getElementById('dashboardLink').href = dashUrl;
     }
 
-    function closePopup() {
-        window.location.href = '/admin'; 
-    }
+    function closePopup() { window.location.href = '/admin'; }
 
     async function addToUptime() {
         const btn = document.getElementById('uptimeBtn');
         const url = document.getElementById('botUrlInput').value;
-        
         btn.innerText = "Connecting...";
         btn.disabled = true;
-
         try {
             const response = await fetch('/api/add-uptime', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ url: url })
             });
-            
             const res = await response.json();
-            
             if(res.status === 'success') {
                 btn.innerText = "✅ Added!";
                 btn.style.background = "#238636";
             } else {
                 btn.innerText = "⚠️ " + res.message;
-                btn.style.background = "#da3633";
             }
         } catch (e) {
             btn.innerText = "❌ Failed";
-            btn.style.background = "#da3633";
-            alert("Backend Error: " + e.message);
+            alert(e.message);
         }
     }
 </script>

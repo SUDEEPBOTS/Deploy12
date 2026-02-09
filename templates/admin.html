@@ -1,79 +1,105 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Admin Panel</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Deployer</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
-        body { background: #0d1117; color: white; font-family: 'Inter', sans-serif; display: flex; justify-content: center; padding-top: 50px;}
-        .container { background: #161b22; padding: 40px; border: 1px solid #30363d; width: 600px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        body { background: #0d1117; color: white; font-family: 'Inter', sans-serif; display: flex; justify-content: center; padding-top: 50px; margin: 0; }
+        .container { background: #161b22; padding: 40px; border: 1px solid #30363d; width: 100%; max-width: 600px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
         
-        h2 { text-align: center; margin-top: 0; color: #58a6ff; }
+        h2 { text-align: center; margin-top: 0; color: #58a6ff; margin-bottom: 30px; }
         
-        label { display: block; margin-top: 15px; font-weight: 600; font-size: 14px; color: #8b949e; }
-        input { width: 100%; padding: 12px; margin-top: 5px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; }
+        /* Forms */
+        form { margin-bottom: 20px; }
+        
+        label { display: block; margin-top: 15px; font-weight: 600; font-size: 13px; color: #8b949e; margin-bottom: 5px; }
+        input { width: 100%; padding: 12px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; font-family: monospace; }
         input:focus { border-color: #58a6ff; outline: none; }
 
-        .btn-add { width: 100%; padding: 12px; background: #238636; color: white; border: none; cursor: pointer; margin-top: 20px; font-weight: bold; border-radius: 6px; font-size: 16px; }
+        /* Buttons */
+        .btn-add { width: 100%; padding: 12px; background: #238636; color: white; border: none; cursor: pointer; margin-top: 25px; font-weight: bold; border-radius: 6px; font-size: 16px; transition: 0.2s; }
         .btn-add:hover { background: #2ea043; }
 
-        .btn-clear { background: transparent; border: 1px solid #da3633; color: #da3633; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; float: right; margin-top: -30px;}
-        .btn-clear:hover { background: rgba(218, 54, 51, 0.1); }
+        .header-actions { display: flex; justify-content: flex-end; margin-bottom: -20px; }
+        .btn-clear { background: transparent; border: 1px solid #da3633; color: #da3633; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: 0.2s; }
+        .btn-clear:hover { background: rgba(218, 54, 51, 0.15); }
 
-        table { width: 100%; border-collapse: collapse; margin-top: 30px; }
-        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #30363d; font-size: 13px; }
-        th { color: #8b949e; }
-        .key-mask { filter: blur(3px); transition: 0.3s; cursor: pointer; }
+        /* Table */
+        .table-container { margin-top: 30px; border-top: 1px solid #30363d; padding-top: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 12px 8px; border-bottom: 1px solid #21262d; font-size: 13px; }
+        th { color: #8b949e; font-weight: 600; }
+        td { color: #c9d1d9; font-family: monospace; }
+        
+        .key-mask { filter: blur(4px); transition: 0.3s; cursor: pointer; user-select: none; }
         .key-mask:hover { filter: none; }
+        
+        .status-badge { display: inline-block; width: 8px; height: 8px; background: #238636; border-radius: 50%; margin-right: 8px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>⚙️ Multi-Key Manager</h2>
-        <form method="POST" action="/admin/clear" onsubmit="return confirm('Are you sure? Sab udd jayega!');">
-            <button class="btn-clear">🗑️ Clear All Keys</button>
-        </form>
+        <div class="header-actions">
+            <form method="POST" action="/admin/clear" onsubmit="return confirm('⚠️ Warning: This will delete ALL saved API keys. Are you sure?');" style="margin: 0;">
+                <button class="btn-clear">🗑️ Clear Database</button>
+            </form>
+        </div>
 
-        <form method="POST" action="/admin/add">
-            <label>Repo URL (Default)</label>
-            <input type="text" name="repo" value="{{ config.repo }}" placeholder="https://github.com/..." required>
+        <h2>⚙️ Render Key Manager</h2>
 
-            <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <div style="flex: 1;">
-                    <label>Render API Key</label>
+        <form method="POST" action="/admin">
+            
+            <label>Repository URL (Default for all deploys)</label>
+            <input type="text" name="repo" value="{{ config.repo }}" placeholder="https://github.com/TeamYukki/YukkiMusicBot" required>
+
+            <div style="display: flex; gap: 15px; margin-top: 5px;">
+                <div style="flex: 2;">
+                    <label>New Render API Key</label>
                     <input type="text" name="new_api_key" placeholder="rnd_xxxxxxxx..." required autocomplete="off">
                 </div>
                 <div style="flex: 1;">
                     <label>Owner ID</label>
-                    <input type="text" name="new_owner_id" placeholder="usr-xxxx or tea-xxxx" required autocomplete="off">
+                    <input type="text" name="new_owner_id" placeholder="tea-xxxx" required autocomplete="off">
                 </div>
             </div>
 
-            <button type="submit" class="btn-add">➕ Add Account</button>
+            <button type="submit" class="btn-add">➕ Add Account & Save Repo</button>
         </form>
 
-        {% if accounts %}
-        <label>✅ Saved Accounts ({{ accounts|length }})</label>
-        <table>
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>API Key (Hover to see)</th>
-                    <th>Owner ID</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for key, owner in accounts %}
-                <tr>
-                    <td>{{ loop.index }}</td>
-                    <td><span class="key-mask">{{ key[:8] }}...{{ key[-4:] }}</span></td>
-                    <td>{{ owner }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <p style="text-align: center; color: #8b949e; margin-top: 20px;">No accounts saved yet.</p>
-        {% endif %}
+        <div class="table-container">
+            <label style="margin-bottom: 10px;">✅ Active Accounts in Pool ({{ accounts|length }})</label>
+            
+            {% if accounts %}
+            <table>
+                <thead>
+                    <tr>
+                        <th width="10%">#</th>
+                        <th width="50%">API Key (Hover to reveal)</th>
+                        <th width="40%">Owner ID</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for key, owner in accounts %}
+                    <tr>
+                        <td><span class="status-badge"></span>{{ loop.index }}</td>
+                        <td><span class="key-mask">{{ key }}</span></td>
+                        <td>{{ owner }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div style="text-align: center; padding: 20px; color: #8b949e; border: 1px dashed #30363d; border-radius: 6px; margin-top: 10px;">
+                No accounts added yet. Add one above or use the Telegram Bot.
+            </div>
+            {% endif %}
+        </div>
+        
+        <div style="text-align: center; margin-top: 25px;">
+             <a href="/" style="color: #58a6ff; text-decoration: none; font-size: 14px;">← Back to Home</a>
+        </div>
     </div>
 </body>
 </html>

@@ -12,6 +12,10 @@ app.secret_key = "debug_secret_key_123"
 # --- CONFIG ---
 MONGO_URL = os.getenv("MONGO_URL")
 UPTIME_SERVICE_URL = "https://uptimebot-rvni.onrender.com/add"
+RENDER_API_BASE = "https://api.render.com/v1"
+
+# Security Token (Optional but good): Sirf tera bot hi add kar paye
+ADMIN_SECRET = "sudeep_super_secret_key" 
 
 client = None
 db = None
@@ -34,6 +38,7 @@ except Exception as e:
     db_error = str(e)
 
 # --- HELPERS ---
+
 def get_settings():
     if settings_col is None: return {"repo": "", "api_data": ""}
     try:
@@ -42,10 +47,11 @@ def get_settings():
     except:
         return {"repo": "", "api_data": ""}
 
-def get_all_accounts_list(shuffle=False):
+def get_all_accounts_list():
     config = get_settings()
     raw_data = config.get("api_data", "")
     account_list = []
+    
     if raw_data:
         lines = [line.strip() for line in raw_data.split('\n') if line.strip()]
         for line in lines:
@@ -54,9 +60,47 @@ def get_all_accounts_list(shuffle=False):
                 key = parts[0].strip()
                 owner = parts[1].strip() if len(parts) >= 2 and parts[1].strip() else FIXED_OWNER_ID
                 if key: account_list.append((key, owner))
-    if not account_list: account_list.append((FIXED_API_KEY, FIXED_OWNER_ID))
-    if shuffle: random.shuffle(account_list)
+    
+    if not account_list: 
+        account_list.append((FIXED_API_KEY, FIXED_OWNER_ID))
+    
     return account_list
+
+def get_best_account(accounts):
+    valid_candidates = []
+    print(f"🔍 Checking {len(accounts)} accounts for availability...")
+
+    for api_key, owner_id in accounts:
+        try:
+            headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
+            response = requests.get(f"{RENDER_API_BASE}/services?limit=50", headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                services = response.json()
+                count = len(services)
+                
+                if count < 2:
+                    print(f"✅ Account Found: ...{api_key[-5:]} | Active Services: {count}")
+                    valid_candidates.append({
+                        "key": api_key, 
+                        "owner": owner_id, 
+                        "count": count
+                    })
+                else:
+                    print(f"❌ Account Full (2+): ...{api_key[-5:]} | Skipping")
+            else:
+                print(f"⚠️ API Error for ...{api_key[-5:]}: {response.status_code}")
+                
+        except Exception as e:
+            print(f"⚠️ Connection Error checking account: {e}")
+
+    if not valid_candidates:
+        return None
+
+    valid_candidates.sort(key=lambda x: x['count'])
+    best = valid_candidates[0]
+    print(f"🏆 Selected Best Account: ...{best['key'][-5:]} with {best['count']} services.")
+    return best['key'], best['owner']
 
 # --- ROUTES ---
 
@@ -72,9 +116,14 @@ def admin():
         repo = request.form.get('repo')
         new_key = request.form.get('new_api_key').strip()
         new_owner = request.form.get('new_owner_id').strip() or FIXED_OWNER_ID
+        
         current = get_settings().get("api_data", "")
         new_entry = f"{new_key},{new_owner}"
-        updated = (current + "\n" + new_entry) if current else new_entry
+        if current:
+            updated = current + "\n" + new_entry
+        else:
+            updated = new_entry
+            
         settings_col.update_one({"_id": "config"}, {"$set": {"repo": repo, "api_data": updated}}, upsert=True)
         return redirect(url_for('admin'))
     return render_template('admin.html', config=get_settings(), accounts=get_all_accounts_list())
@@ -92,6 +141,46 @@ def login():
         return redirect(url_for('admin'))
     return "Incorrect Password"
 
+# --- 🔥 NEW ENDPOINT FOR TELEGRAM BOT ---
+@app.route('/api/add_account', methods=['POST'])
+def add_account_api():
+    try:
+        data = request.json
+        api_key = data.get('api_key')
+        owner_id = data.get('owner_id')
+        secret = data.get('secret') # Security check
+
+        # 1. Validation
+        if not api_key or not owner_id:
+            return jsonify({"status": "error", "message": "Missing api_key or owner_id"}), 400
+        
+        if secret != ADMIN_SECRET:
+            return jsonify({"status": "error", "message": "Unauthorized! Wrong Secret."}), 403
+
+        # 2. Update MongoDB
+        current_config = get_settings()
+        current_data = current_config.get("api_data", "")
+        
+        # Check if already exists to avoid duplicates
+        if api_key in current_data:
+            return jsonify({"status": "error", "message": "API Key already exists!"})
+
+        new_entry = f"{api_key},{owner_id}"
+        
+        if current_data:
+            updated_data = current_data + "\n" + new_entry
+        else:
+            updated_data = new_entry
+            
+        settings_col.update_one({"_id": "config"}, {"$set": {"api_data": updated_data}}, upsert=True)
+        
+        print(f"✅ New Account Added via API: ...{api_key[-5:]}")
+        return jsonify({"status": "success", "message": "Account added to pool!"})
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/prepare', methods=['POST'])
 def prepare():
     data = request.form.to_dict()
@@ -105,7 +194,6 @@ def add_uptime_proxy():
     try:
         data = request.json
         url = data.get("url")
-        # 40s timeout taaki sota hua bot jag jaye
         resp = requests.post(UPTIME_SERVICE_URL, json={"url": url}, timeout=40)
         return jsonify(resp.json())
     except Exception as e:
@@ -114,85 +202,71 @@ def add_uptime_proxy():
 @app.route('/api/deploy', methods=['POST'])
 def deploy_api():
     try:
-        accounts = get_all_accounts_list(shuffle=True)
+        all_accounts = get_all_accounts_list()
+        best_account = get_best_account(all_accounts)
+        
+        if not best_account:
+            return jsonify({"status": "error", "message": "❌ All Accounts are Full (Max 2 Services) or Invalid."})
+
+        api_key, owner_id = best_account
+        
         json_data = request.json
         repo = json_data.get('repo')
         env_vars = json_data.get('env_vars')
-        
-        # Prepare Env Payload (Clean List)
+
         env_payload = []
         for k, v in env_vars.items():
             if v: env_payload.append({"key": k, "value": str(v)})
+
+        clean_owner_id = str(owner_id).strip()
+        if not clean_owner_id or len(clean_owner_id) < 5: clean_owner_id = FIXED_OWNER_ID
         
-        last_error = "Unknown"
-
-        for api_key, owner_id in accounts:
-            clean_owner_id = str(owner_id).strip()
-            if not clean_owner_id or len(clean_owner_id) < 5: clean_owner_id = FIXED_OWNER_ID
-            
-            service_name = f"music-bot-{secrets.token_hex(3)}"
-
-            # STEP 1: CREATE SERVICE (Without Env Vars first)
-            create_payload = {
-                "type": "web_service",
-                "name": service_name,
-                "ownerId": clean_owner_id, 
-                "repo": repo,
-                "serviceDetails": {
-                    "env": "docker",
-                    "region": "singapore",
-                    "plan": "free"
-                    # Env Vars ko hum Step 2 me bhejenge
-                }
+        service_name = f"music-bot-{secrets.token_hex(3)}"
+        
+        create_payload = {
+            "type": "web_service",
+            "name": service_name,
+            "ownerId": clean_owner_id, 
+            "repo": repo,
+            "serviceDetails": {
+                "env": "docker",
+                "region": "singapore",
+                "plan": "free"
             }
-            
-            headers = {
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}"
-            }
+        }
+        
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
 
-            try:
-                print(f"🔄 Creating Service... OwnerID: {clean_owner_id}")
-                response = requests.post("https://api.render.com/v1/services", json=create_payload, headers=headers)
-                
-                if response.status_code == 201:
-                    service_data = response.json()
-                    srv_id = service_data.get('service', {}).get('id')
-                    dash_url = f"https://dashboard.render.com/web/{srv_id}"
-                    app_url = f"https://{service_name}.onrender.com"
+        print(f"🚀 Deploying on selected account (Owner: {clean_owner_id})...")
+        response = requests.post(f"{RENDER_API_BASE}/services", json=create_payload, headers=headers)
+        
+        if response.status_code == 201:
+            service_data = response.json()
+            srv_id = service_data.get('service', {}).get('id')
+            dash_url = f"https://dashboard.render.com/web/{srv_id}"
+            app_url = f"https://{service_name}.onrender.com"
 
-                    # 🔥 STEP 2: FORCE PUSH ENV VARS (Double Attack Strategy)
-                    print(f"🚀 Force Updating Env Vars for {srv_id}...")
-                    
-                    env_url = f"https://api.render.com/v1/services/{srv_id}/env-vars"
-                    # PUT request purane vars ko replace karke naye daal deta hai
-                    env_response = requests.put(env_url, json=env_payload, headers=headers)
-                    
-                    if env_response.status_code == 200:
-                        print("✅ Env Vars Updated Successfully!")
-                    else:
-                        print(f"⚠️ Env Var Update Failed: {env_response.text}")
+            print(f"🔧 Updating Env Vars for {srv_id}...")
+            env_url = f"{RENDER_API_BASE}/services/{srv_id}/env-vars"
+            requests.put(env_url, json=env_payload, headers=headers)
 
-                    return jsonify({"status": "success", "url": dash_url, "app_url": app_url})
-                
-                elif response.status_code == 429:
-                    print("⚠️ Rate Limit! Switching Account...")
-                    continue 
-                else:
-                    print(f"❌ Render Creation Error: {response.text}")
-                    last_error = response.text
-                    continue 
-            except Exception as e:
-                print(f"Network Error: {e}")
-                last_error = str(e)
-                continue
-
-        return jsonify({"status": "error", "message": f"All Failed. Last Error: {last_error}"})
+            return jsonify({
+                "status": "success", 
+                "url": dash_url, 
+                "app_url": app_url,
+                "message": "Deployment Started Successfully!"
+            })
+        
+        else:
+            return jsonify({"status": "error", "message": f"Render Error: {response.text}"})
 
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)})
 
 if __name__ == '__main__':
     app.run(debug=True)
-    

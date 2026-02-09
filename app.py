@@ -14,11 +14,10 @@ MONGO_URL = os.getenv("MONGO_URL")
 UPTIME_SERVICE_URL = "https://uptimebot-rvni.onrender.com/add"
 RENDER_API_BASE = "https://api.render.com/v1"
 
-# 🔥 IMPORTANT: Yahan apni Logger App ka URL daal (Heroku wala)
-# Example: https://tera-logger-app.herokuapp.com/api/create_link
+# 🔥 Logger App URL (Ye wahi hai jo tune diya tha, sahi hai)
 LOGGER_API_URL = "https://web6-aa846e9f78ad.herokuapp.com/api/create_link"
 
-# Security Token for Telegram Bot
+# Security Token (Bot aur Website ka same hona chahiye)
 ADMIN_SECRET = "sudeep_super_secret_key" 
 
 client = None
@@ -37,6 +36,7 @@ try:
         client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=5000)
         db = client["DeployerBot"]
         settings_col = db["settings"]
+        # Check connection
         client.server_info()
 except Exception as e:
     db_error = str(e)
@@ -77,12 +77,14 @@ def get_best_account(accounts):
     for api_key, owner_id in accounts:
         try:
             headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
+            # Render API se pucho kitne services hain
             response = requests.get(f"{RENDER_API_BASE}/services?limit=50", headers=headers, timeout=10)
             
             if response.status_code == 200:
                 services = response.json()
                 count = len(services)
                 
+                # Rule: Account me < 2 services honi chahiye
                 if count < 2:
                     print(f"✅ Account Found: ...{api_key[-5:]} | Active Services: {count}")
                     valid_candidates.append({
@@ -101,6 +103,7 @@ def get_best_account(accounts):
     if not valid_candidates:
         return None
 
+    # Sort: Jiska count kam hai wo pehle (0 services > 1 service)
     valid_candidates.sort(key=lambda x: x['count'])
     best = valid_candidates[0]
     print(f"🏆 Selected Best Account: ...{best['key'][-5:]} with {best['count']} services.")
@@ -123,6 +126,8 @@ def admin():
         
         current = get_settings().get("api_data", "")
         new_entry = f"{new_key},{new_owner}"
+        
+        # Append logic
         if current:
             updated = current + "\n" + new_entry
         else:
@@ -145,6 +150,7 @@ def login():
         return redirect(url_for('admin'))
     return "Incorrect Password"
 
+# --- 🔥 API: TELEGRAM BOT YAHAN DATA BHEJEGA ---
 @app.route('/api/add_account', methods=['POST'])
 def add_account_api():
     try:
@@ -162,6 +168,7 @@ def add_account_api():
         current_config = get_settings()
         current_data = current_config.get("api_data", "")
         
+        # Duplicate Check
         if api_key in current_data:
             return jsonify({"status": "error", "message": "API Key already exists!"})
 
@@ -181,7 +188,9 @@ def prepare():
     data = request.form.to_dict()
     config = get_settings()
     repo_url = data.get('repo_url') or config.get('repo', 'https://github.com/TeamYukki/YukkiMusicBot')
+    
     if 'repo_url' in data: del data['repo_url']
+    
     return render_template('deploy.html', env_vars=data, repo_url=repo_url)
 
 @app.route('/api/add-uptime', methods=['POST'])
@@ -194,11 +203,11 @@ def add_uptime_proxy():
     except Exception as e:
         return jsonify({"status": "error", "message": f"Uptime Error: {str(e)}"})
 
-# --- 🔥 MAIN DEPLOY LOGIC (UPDATED) ---
+# --- 🔥 MAIN DEPLOY API ---
 @app.route('/api/deploy', methods=['POST'])
 def deploy_api():
     try:
-        # 1. Select Best Account
+        # 1. Best Account Choose Karo
         all_accounts = get_all_accounts_list()
         best_account = get_best_account(all_accounts)
         
@@ -207,7 +216,7 @@ def deploy_api():
 
         api_key, owner_id = best_account
         
-        # 2. Prepare Data
+        # 2. Data Prepare
         json_data = request.json
         repo = json_data.get('repo')
         env_vars = json_data.get('env_vars')
@@ -227,7 +236,11 @@ def deploy_api():
             "name": service_name,
             "ownerId": clean_owner_id, 
             "repo": repo,
-            "serviceDetails": {"env": "docker", "region": "singapore", "plan": "free"}
+            "serviceDetails": {
+                "env": "docker", 
+                "region": "singapore", 
+                "plan": "free"
+            }
         }
         
         headers = {
@@ -242,7 +255,6 @@ def deploy_api():
         if response.status_code == 201:
             service_data = response.json()
             srv_id = service_data.get('service', {}).get('id')
-            # Render se naam wapas le rahe hain taaki 100% sahi ho
             final_srv_name = service_data.get('service', {}).get('name', service_name)
             
             dash_url = f"https://dashboard.render.com/web/{srv_id}"
@@ -252,7 +264,7 @@ def deploy_api():
             print(f"🔧 Updating Env Vars for {srv_id}...")
             requests.put(f"{RENDER_API_BASE}/services/{srv_id}/env-vars", json=env_payload, headers=headers)
 
-            # 5. 🔥 AUTO UPTIME (Backend Side)
+            # 5. Auto Uptime
             uptime_msg = "Checking..."
             try:
                 requests.post(UPTIME_SERVICE_URL, json={"url": app_url}, timeout=5)
@@ -260,7 +272,7 @@ def deploy_api():
             except:
                 uptime_msg = "⚠️ Failed (Add Manually)"
 
-            # 6. 🔥 LOG LINK GENERATION (Connect to Heroku Logger)
+            # 6. Generate Log Link (Logger App se)
             log_link = "#"
             try:
                 log_payload = {"api_key": api_key, "service_id": srv_id}
@@ -271,7 +283,7 @@ def deploy_api():
             except Exception as e:
                 print(f"❌ Log Link Error: {e}")
 
-            # 7. Final Response to Frontend
+            # 7. Final Success Response
             return jsonify({
                 "status": "success", 
                 "url": dash_url, 

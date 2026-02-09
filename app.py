@@ -238,7 +238,7 @@ def deploy_api():
             "repo": repo,
             "serviceDetails": {
                 "env": "docker", 
-                "region": "singapore", 
+                "region": "Oregon", 
                 "plan": "free"
             }
         }

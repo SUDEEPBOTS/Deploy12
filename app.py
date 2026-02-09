@@ -14,7 +14,11 @@ MONGO_URL = os.getenv("MONGO_URL")
 UPTIME_SERVICE_URL = "https://uptimebot-rvni.onrender.com/add"
 RENDER_API_BASE = "https://api.render.com/v1"
 
-# Security Token (Optional but good): Sirf tera bot hi add kar paye
+# 🔥 IMPORTANT: Yahan apni Logger App ka URL daal (Heroku wala)
+# Example: https://tera-logger-app.herokuapp.com/api/create_link
+LOGGER_API_URL = "https://web6-aa846e9f78ad.herokuapp.com/api/create_link"
+
+# Security Token for Telegram Bot
 ADMIN_SECRET = "sudeep_super_secret_key" 
 
 client = None
@@ -141,36 +145,28 @@ def login():
         return redirect(url_for('admin'))
     return "Incorrect Password"
 
-# --- 🔥 NEW ENDPOINT FOR TELEGRAM BOT ---
 @app.route('/api/add_account', methods=['POST'])
 def add_account_api():
     try:
         data = request.json
         api_key = data.get('api_key')
         owner_id = data.get('owner_id')
-        secret = data.get('secret') # Security check
+        secret = data.get('secret')
 
-        # 1. Validation
         if not api_key or not owner_id:
             return jsonify({"status": "error", "message": "Missing api_key or owner_id"}), 400
         
         if secret != ADMIN_SECRET:
             return jsonify({"status": "error", "message": "Unauthorized! Wrong Secret."}), 403
 
-        # 2. Update MongoDB
         current_config = get_settings()
         current_data = current_config.get("api_data", "")
         
-        # Check if already exists to avoid duplicates
         if api_key in current_data:
             return jsonify({"status": "error", "message": "API Key already exists!"})
 
         new_entry = f"{api_key},{owner_id}"
-        
-        if current_data:
-            updated_data = current_data + "\n" + new_entry
-        else:
-            updated_data = new_entry
+        updated_data = (current_data + "\n" + new_entry) if current_data else new_entry
             
         settings_col.update_one({"_id": "config"}, {"$set": {"api_data": updated_data}}, upsert=True)
         
@@ -179,7 +175,6 @@ def add_account_api():
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 @app.route('/prepare', methods=['POST'])
 def prepare():
@@ -199,17 +194,20 @@ def add_uptime_proxy():
     except Exception as e:
         return jsonify({"status": "error", "message": f"Uptime Error: {str(e)}"})
 
+# --- 🔥 MAIN DEPLOY LOGIC (UPDATED) ---
 @app.route('/api/deploy', methods=['POST'])
 def deploy_api():
     try:
+        # 1. Select Best Account
         all_accounts = get_all_accounts_list()
         best_account = get_best_account(all_accounts)
         
         if not best_account:
-            return jsonify({"status": "error", "message": "❌ All Accounts are Full (Max 2 Services) or Invalid."})
+            return jsonify({"status": "error", "message": "❌ All Accounts are Full or Invalid."})
 
         api_key, owner_id = best_account
         
+        # 2. Prepare Data
         json_data = request.json
         repo = json_data.get('repo')
         env_vars = json_data.get('env_vars')
@@ -223,16 +221,13 @@ def deploy_api():
         
         service_name = f"music-bot-{secrets.token_hex(3)}"
         
+        # 3. Create Service on Render
         create_payload = {
             "type": "web_service",
             "name": service_name,
             "ownerId": clean_owner_id, 
             "repo": repo,
-            "serviceDetails": {
-                "env": "docker",
-                "region": "singapore",
-                "plan": "free"
-            }
+            "serviceDetails": {"env": "docker", "region": "singapore", "plan": "free"}
         }
         
         headers = {
@@ -241,23 +236,50 @@ def deploy_api():
             "Authorization": f"Bearer {api_key}"
         }
 
-        print(f"🚀 Deploying on selected account (Owner: {clean_owner_id})...")
+        print(f"🚀 Deploying {service_name} on {clean_owner_id}...")
         response = requests.post(f"{RENDER_API_BASE}/services", json=create_payload, headers=headers)
         
         if response.status_code == 201:
             service_data = response.json()
             srv_id = service_data.get('service', {}).get('id')
+            # Render se naam wapas le rahe hain taaki 100% sahi ho
+            final_srv_name = service_data.get('service', {}).get('name', service_name)
+            
             dash_url = f"https://dashboard.render.com/web/{srv_id}"
-            app_url = f"https://{service_name}.onrender.com"
+            app_url = f"https://{final_srv_name}.onrender.com"
 
+            # 4. Push Env Vars
             print(f"🔧 Updating Env Vars for {srv_id}...")
-            env_url = f"{RENDER_API_BASE}/services/{srv_id}/env-vars"
-            requests.put(env_url, json=env_payload, headers=headers)
+            requests.put(f"{RENDER_API_BASE}/services/{srv_id}/env-vars", json=env_payload, headers=headers)
 
+            # 5. 🔥 AUTO UPTIME (Backend Side)
+            uptime_msg = "Checking..."
+            try:
+                requests.post(UPTIME_SERVICE_URL, json={"url": app_url}, timeout=5)
+                uptime_msg = "✅ Added Successfully"
+            except:
+                uptime_msg = "⚠️ Failed (Add Manually)"
+
+            # 6. 🔥 LOG LINK GENERATION (Connect to Heroku Logger)
+            log_link = "#"
+            try:
+                log_payload = {"api_key": api_key, "service_id": srv_id}
+                log_res = requests.post(LOGGER_API_URL, json=log_payload, timeout=8)
+                if log_res.status_code == 200:
+                    log_link = log_res.json().get('link', '#')
+                    print(f"📜 Log Link Generated: {log_link}")
+            except Exception as e:
+                print(f"❌ Log Link Error: {e}")
+
+            # 7. Final Response to Frontend
             return jsonify({
                 "status": "success", 
                 "url": dash_url, 
                 "app_url": app_url,
+                "service_id": srv_id,
+                "service_name": final_srv_name,
+                "uptime_status": uptime_msg,
+                "log_url": log_link,
                 "message": "Deployment Started Successfully!"
             })
         

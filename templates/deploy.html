@@ -7,79 +7,79 @@
         body { background-color: #0d1117; color: #c9d1d9; font-family: monospace; display: flex; justify-content: center; padding-top: 30px; margin: 0; }
         .container { background: #161b22; padding: 20px; border-radius: 10px; border: 1px solid #30363d; width: 100%; max-width: 450px; }
         h2 { color: #58a6ff; text-align: center; margin-top: 0; }
-        
         label { display: block; color: #8b949e; font-size: 12px; margin-bottom: 5px; font-weight: bold; }
         input { width: 100%; padding: 10px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 5px; box-sizing: border-box; margin-bottom: 10px; }
-        
-        .vars-box {
-            background: #0d1117; border: 1px solid #30363d; padding: 10px;
-            max-height: 400px; overflow-y: auto; border-radius: 5px; margin-bottom: 15px;
-        }
-        
+        .vars-box { background: #0d1117; border: 1px solid #30363d; padding: 10px; max-height: 400px; overflow-y: auto; border-radius: 5px; margin-bottom: 15px; }
         .deploy-btn { width: 100%; padding: 12px; background: #238636; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
         .loader-area { display: none; text-align: center; color: #58a6ff; margin-top: 15px; }
 
-        /* POPUP */
-        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; }
-        .popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #161b22; padding: 25px; border: 1px solid #238636; border-radius: 10px; text-align: center; z-index: 101; width: 300px; }
-        .btn-uptime { width: 100%; padding: 10px; background: #1f6feb; color: white; border: none; border-radius: 5px; margin-top: 10px; cursor: pointer; }
-        .btn-close { background: transparent; border: 1px solid red; color: red; padding: 5px 10px; margin-top: 15px; cursor: pointer; border-radius: 5px; }
+        /* POPUP STYLES */
+        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; }
+        .popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #161b22; padding: 25px; border: 1px solid #238636; border-radius: 10px; text-align: left; z-index: 101; width: 350px; color: white; }
+        
+        .info-row { margin-bottom: 8px; font-size: 13px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        .info-label { color: #8b949e; display: inline-block; width: 100px; }
+        .info-val { color: #58a6ff; font-weight: bold; }
+
+        .btn-logs { width: 100%; padding: 10px; background: #1f6feb; color: white; border: none; border-radius: 5px; margin-top: 15px; cursor: pointer; text-decoration: none; display: block; text-align: center; font-weight: bold; }
+        .btn-close { background: transparent; border: 1px solid #da3633; color: #da3633; padding: 5px 10px; margin-top: 10px; cursor: pointer; border-radius: 5px; width: 100%; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h2>🚀 Ready to Deploy</h2>
-    
     <label>Selected Repository</label>
     <input type="text" id="repo" value="{{ repo_url }}" readonly>
-
     <label>Environment Variables</label>
-    
     <div id="envContainer" class="vars-box"></div>
-
     <button onclick="startDeploy()" id="deployBtn" class="deploy-btn">Deploy on Render 🔥</button>
-    
     <div id="loaderArea" class="loader-area">
-        Connecting to Render API...<br>Please wait...
+        Deploying & Auto-Configuring...<br>⏳ Please wait (20-30s)...
     </div>
-
     <p id="errorLog" style="color: red; text-align: center; font-size: 12px;"></p>
 </div>
 
 <div id="overlay" class="overlay"></div>
 <div id="successPopup" class="popup">
-    <h3 style="color: #238636;">🎉 Deployment Successful!</h3>
-    <input type="text" id="botUrlInput" readonly style="text-align: center;">
-    <button onclick="addToUptime()" id="uptimeBtn" class="btn-uptime">📡 Add to Uptime Monitor</button>
-    <br><br>
-    <button onclick="closePopup()" class="btn-close">Close</button>
+    <h3 style="color: #238636; text-align: center; margin-top: 0;">🎉 Deployment Successful!</h3>
+    
+    <div class="info-row">
+        <span class="info-label">Bot Name:</span>
+        <span class="info-val" id="resName">...</span>
+    </div>
+    <div class="info-row">
+        <span class="info-label">Service ID:</span>
+        <span class="info-val" id="resId">...</span>
+    </div>
+    <div class="info-row">
+        <span class="info-label">Uptime:</span>
+        <span class="info-val" id="resUptime" style="color: #238636;">Checking...</span>
+    </div>
+    <div class="info-row">
+        <span class="info-label">App URL:</span>
+        <a id="resLink" href="#" target="_blank" style="color: #58a6ff;">Open App ↗️</a>
+    </div>
+
+    <a id="logsBtn" href="#" target="_blank" class="btn-logs">📜 View Live Logs</a>
+    
+    <button onclick="closePopup()" class="btn-close">Close & Return</button>
 </div>
 
 <script>
-    // 🔥 MASTERSTROKE: Data seedha Python se JS mein aa raha hai.
-    // HTML parsing ka jhanjhat hi khatam.
     let envData = {{ env_vars | tojson }};
     const container = document.getElementById('envContainer');
 
-    // Inputs Create karo taaki user dekh sake (aur edit kar sake)
     for (const [key, value] of Object.entries(envData)) {
         const wrapper = document.createElement('div');
         wrapper.style.marginBottom = "10px";
-
         const label = document.createElement('label');
         label.style.color = "#58a6ff";
         label.innerText = key;
-        
         const input = document.createElement('input');
         input.type = "text";
         input.value = value;
-        
-        // Agar user kuch change kare, toh main variable bhi update ho jaye
-        input.oninput = function() {
-            envData[key] = input.value;
-        };
-
+        input.oninput = function() { envData[key] = input.value; };
         wrapper.appendChild(label);
         wrapper.appendChild(input);
         container.appendChild(wrapper);
@@ -91,14 +91,6 @@
         const loader = document.getElementById('loaderArea');
         const errorLog = document.getElementById('errorLog');
 
-        // 🔥 DEBUG CHECK: Deploy dabate hi console/alert me dikhega data hai ya nahi
-        console.log("FINAL SENDING DATA:", envData);
-        
-        if (Object.keys(envData).length === 0) {
-            alert("❌ ERROR: No Variables Found! Data is empty.");
-            return;
-        }
-
         btn.style.display = 'none';
         loader.style.display = 'block';
         errorLog.innerText = "";
@@ -107,17 +99,34 @@
             const res = await fetch('/api/deploy', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    repo: repoUrl,
-                    env_vars: envData // Seedha Global Variable Bhej rahe hain
-                })
+                body: JSON.stringify({ repo: repoUrl, env_vars: envData })
             });
 
             const data = await res.json();
 
             if (data.status === 'success') {
                 loader.style.display = 'none';
-                showPopup(data.app_url, data.url);
+                
+                // DATA POPULATE KARO
+                document.getElementById('resName').innerText = data.service_name;
+                document.getElementById('resId').innerText = data.service_id;
+                document.getElementById('resUptime').innerText = data.uptime_status;
+                document.getElementById('resLink').href = data.app_url;
+                
+                // Logs ka button
+                const logsBtn = document.getElementById('logsBtn');
+                if (data.log_url && data.log_url !== "#") {
+                    logsBtn.href = data.log_url;
+                    logsBtn.innerHTML = "📜 View Live Logs (Saved)";
+                } else {
+                    logsBtn.style.background = "#555";
+                    logsBtn.innerHTML = "❌ Logs Unavailable";
+                    logsBtn.href = "#";
+                }
+
+                document.getElementById('overlay').style.display = 'block';
+                document.getElementById('successPopup').style.display = 'block';
+
             } else {
                 throw new Error(data.message);
             }
@@ -128,38 +137,7 @@
         }
     }
 
-    // Popup Functions
-    function showPopup(appUrl, dashUrl) {
-        document.getElementById('overlay').style.display = 'block';
-        document.getElementById('successPopup').style.display = 'block';
-        document.getElementById('botUrlInput').value = appUrl;
-    }
-
     function closePopup() { window.location.href = '/admin'; }
-
-    async function addToUptime() {
-        const btn = document.getElementById('uptimeBtn');
-        const url = document.getElementById('botUrlInput').value;
-        btn.innerText = "Connecting...";
-        btn.disabled = true;
-        try {
-            const response = await fetch('/api/add-uptime', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ url: url })
-            });
-            const res = await response.json();
-            if(res.status === 'success') {
-                btn.innerText = "✅ Added!";
-                btn.style.background = "#238636";
-            } else {
-                btn.innerText = "⚠️ " + res.message;
-            }
-        } catch (e) {
-            btn.innerText = "❌ Failed";
-            alert(e.message);
-        }
-    }
 </script>
 
 </body>
